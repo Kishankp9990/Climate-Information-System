@@ -1,0 +1,116 @@
+<!DOCTYPE html>
+<html lang="en">
+{% load static  %}
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>leaflet tutorial</title>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+    integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY="
+    crossorigin=""/>
+    
+    <link rel="stylesheet" href="{% static 'css/leaflet-calendar.css'%}">
+   
+    
+    <style>
+        #map{
+        height: 900px; 
+        width:1000px;
+        margin:auto;}
+    </style>
+</head>
+<body>
+    <div id="map"></div>
+</body>
+</html>
+ <!-- Make sure you put this AFTER Leaflet's CSS -->
+ <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+     integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo="
+     crossorigin=""></script>
+<script type="text/javascript" src="https://cdn.jsdelivr.net/npm/leaflet-timedimension@1.1.1/dist/leaflet.timedimension.min.js"></script>   
+
+<script src="{% static 'js/leaflet-calendar.js' %}"></script> 
+
+<script> 
+   
+   
+
+    // your_script.js
+
+// Set up the map
+var map = L.map('map', {
+    zoom: 5,
+    center: [22, 84],
+    timeDimension: true,
+    timeDimensionOptions: {
+        timeInterval: "1979-01-01/1979-12-31",
+        period: "PT1H"
+    },
+    timeDimensionControl: true,
+});
+
+// Add OpenStreetMap as the base layer
+L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    attribution: '© OpenStreetMap contributors'
+}).addTo(map);
+
+
+
+
+var wmsLayer=L.tileLayer.wms('http://localhost:8080/geoserver/learning/wms', {
+    layers: 'learning:APCP_sfc',
+    format: 'image/png',
+    transparent: true,
+    time: '1979-7-01'
+});
+
+wmsLayer.addTo(map);
+
+var  selectTime=L.control.calendar({
+    id: 1,
+    minDate: "1979-01-01",
+    maxDate: "1979-12-31",
+    onSelectDate: function(value) {
+        // Update WMS layer with selected date
+        wmsLayer.setParams({time: value});
+    },
+    position: "topleft",
+  });
+
+selectTime.addTo(map);
+
+
+
+
+
+
+  // Add a click event to retrieve altitude information
+map.on('click', function (e) {
+    var latlng = e.latlng;
+    var url = 'http://localhost:8080/geoserver/learning/wms' +
+        '?service=WMS&version=1.1.0&request=GetFeatureInfo' +
+        '&layers=learning:APCP_sfc' +
+        '&styles=' +
+        '&bbox=' + map.getBounds().toBBoxString() +
+        '&width=' + map.getSize().x +
+        '&height=' + map.getSize().y +
+        '&srs=EPSG:4326' +
+        '&info_format=text/plain' +
+        '&query_layers=learning:APCP_sfc' +
+        '&x=' + e.containerPoint.x +
+        '&y=' + e.containerPoint.y;
+
+    // Make a GetFeatureInfo request to GeoServer
+    fetch(url)
+        .then(response => response.text())
+        .then(data => {
+            // Extract and display altitude information
+            alert('Ppt_value: ' + data.trim());
+        });
+});
+
+ 
+
+
+
+</script>

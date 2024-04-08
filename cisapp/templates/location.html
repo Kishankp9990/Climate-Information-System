@@ -1,0 +1,174 @@
+{% extends 'basic.html' %}
+{%block title%}app1{% endblock %}
+{%block css%}#map{
+    height: 700px; 
+    width:1000px;
+    margin:auto;}
+    #plot{
+    height: 700px; 
+    width:1000px;
+    margin:auto;}
+    {%endblock%}
+{%block body%}
+<form id="submitAddress">
+    <input type="text" id="fname" name="fname" placeholder="type your address here"><br>
+    <input type="submit" value="Submit">
+    
+</form>
+<div id="map"></div>
+<!-- Add radio buttons to select plot type -->
+<div>
+    <input type="radio" id="showPrecipitation" name="plotType" value="showPrecipitation" checked>
+    <label for="showPrecipitation">Precipitation</label>
+    <input type="radio" id="showwindspeed" name="plotType" value="showwindspeed">
+    <label for="showwindspeed">Wind Speed</label>
+    <input type="radio" id="showtemp" name="plotType" value="showtemp">
+    <label for="showtemp">Temperature</label>
+</div>
+<div id="plot">Plot will load here</div>
+
+{%endblock%}
+{%block script%}
+ <!-- Make sure you put this AFTER Leaflet's CSS -->
+ <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+ integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo="
+ crossorigin=""></script>
+<script type="text/javascript" src="https://cdn.jsdelivr.net/npm/leaflet-timedimension@1.1.1/dist/leaflet.timedimension.min.js"></script>
+<script src="https://cdn.bokeh.org/bokeh/release/bokeh-3.4.0.min.js"></script>
+<script src="https://cdn.bokeh.org/bokeh/release/bokeh-widgets-3.4.0.min.js"></script>
+<script src="https://cdn.bokeh.org/bokeh/release/bokeh-tables-3.4.0.min.js"></script>
+<script src="https://cdn.bokeh.org/bokeh/release/bokeh-api-3.4.0.min.js"></script>
+<script> 
+    // your_script.js
+
+// Set up the map
+var map = L.map('map').setView([22, 84], 5);
+
+// Add OpenStreetMap as the base layer
+L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    attribution: '© OpenStreetMap contributors'
+}).addTo(map);
+
+var globalLat;
+var globalLng;
+
+
+
+map.on('click', function (e) {
+    var latlng = e.latlng;
+    var lat=latlng.lat;
+    var lng=latlng.lng
+    globalLat=lat;
+    globalLng=lng;
+    console.log(lat,lng);
+    
+
+    getOut(lat,lng);
+    document.getElementById('showPrecipitation').checked = true; // Automatically check Precipitation radio button
+
+
+   
+    
+
+});
+
+
+document.getElementById("submitAddress").onsubmit = function(event) {
+    event.preventDefault(); // Prevent form submission
+    
+    // Retrieve the value of the input field
+    var address = document.getElementById("fname").value;
+    
+    // URL-encode the address
+    var encodedAddresstemp = encodeURIComponent(address);
+            
+    // Print the encoded value to the console
+    
+    var encodedAddress="search?q="+encodedAddresstemp+"&format=json";
+    var completeurl="https://nominatim.openstreetmap.org/"+encodedAddress;
+    console.log(completeurl);
+
+    // Make an AJAX request using fetch API
+    fetch(completeurl)
+        .then(response => response.json())
+        .then(data => {
+            // Extract lat and lon from the response
+            if (data.length > 0) {
+                var lat = data[0].lat;
+                var lng = data[0].lon;
+
+                globalLat=lat;
+                globalLng=lng;
+                getOut(lat,lng);
+                document.getElementById('showPrecipitation').checked = true; // Automatically check Precipitation radio button
+                
+                // Print lat and lon to the console
+                console.log("Latitude:", lat);
+                console.log("Longitude:", lng);
+                
+                
+                
+            } else {
+                console.log("Address could not be found.");
+            }
+        })
+        .catch(error => {
+            console.error("Error:", error);
+        });
+    
+    
+};
+
+// Attach event listeners to radio buttons
+document.querySelectorAll('input[name="plotType"]').forEach(function(radio) {
+    radio.addEventListener('change', function () {
+        var plotType = this.value;
+        if (plotType === 'showPrecipitation') {
+            getOut(globalLat, globalLng);
+        } else if (plotType === 'showwindspeed') {
+            getOutw(globalLat, globalLng);
+        } else if (plotType === 'showtemp') {
+            getOutT(globalLat, globalLng);
+        }
+    });
+});
+
+
+    // Function to fetch data for Precipitation
+function getOut(lat, lng) {
+    var urlData = "{% url 'showPrecipitation' %}?lat=" + lat + "&lng=" + lng;
+    fetchData(urlData);
+};
+
+    // Function to fetch data for Wind Speed
+function getOutw(lat, lng) {
+    var urlData = "{% url 'showwindspeed' %}?lat=" + lat + "&lng=" + lng;
+    fetchData(urlData);
+};
+
+    // Function to fetch data for Temperature
+function getOutT(lat, lng) {
+    var urlData = "{% url 'showtemp' %}?lat=" + lat + "&lng=" + lng;
+    fetchData(urlData);
+};
+
+    // Function to fetch data using Fetch API
+function fetchData(urlData) {
+    fetch(urlData)
+        .then(response => response.text())
+        .then(html => {
+            document.getElementById('plot').innerHTML = html;
+            // Find and execute the script within the inserted HTML
+            const scripts = document.getElementById('plot').getElementsByTagName('script');
+            for (let i = 0; i < scripts.length; i++) {
+                const script = document.createElement('script');
+                script.textContent = scripts[i].textContent;
+                document.body.appendChild(script);
+            }
+        })
+        .catch(error => {
+            console.error("Error:", error);
+        });
+};
+</script>
+{%endblock%}

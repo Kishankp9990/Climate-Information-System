@@ -1,0 +1,98 @@
+{% extends 'basic.html' %}
+{%block title%}app1{% endblock %}
+{%block css%}#map{
+    height: 700px; 
+    width:1000px;
+    margin:auto;}{%endblock%}
+{%block body%}
+<form id="submitAddress">
+    <input type="text" id="fname" name="fname" placeholder="type your address here"><br>
+    <input type="submit" value="Submit">
+    
+</form>
+<div id="map"></div>{%endblock%}
+{%block script%}
+ <!-- Make sure you put this AFTER Leaflet's CSS -->
+ <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+ integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo="
+ crossorigin=""></script>
+<script type="text/javascript" src="https://cdn.jsdelivr.net/npm/leaflet-timedimension@1.1.1/dist/leaflet.timedimension.min.js"></script>  
+<script> 
+    // your_script.js
+
+// Set up the map
+var map = L.map('map').setView([0, 0], 2);
+
+// Add OpenStreetMap as the base layer
+L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    attribution: '© OpenStreetMap contributors'
+}).addTo(map);
+
+
+
+
+
+map.on('click', function (e) {
+    var latlng = e.latlng;
+    var lat=latlng.lat;
+    var lng=latlng.lng
+    console.log(lat,lng);
+
+    getOut(lat,lng);
+
+
+
+   
+    
+
+});
+
+
+document.getElementById("submitAddress").onsubmit = function(event) {
+    event.preventDefault(); // Prevent form submission
+    
+    // Retrieve the value of the input field
+    var address = document.getElementById("fname").value;
+    
+    // URL-encode the address
+    var encodedAddresstemp = encodeURIComponent(address);
+            
+    // Print the encoded value to the console
+    
+    var encodedAddress="search?q="+encodedAddresstemp+"&format=json";
+    var completeurl="https://nominatim.openstreetmap.org/"+encodedAddress;
+    console.log(completeurl);
+
+    // Make an AJAX request using fetch API
+    fetch(completeurl)
+        .then(response => response.json())
+        .then(data => {
+            // Extract lat and lon from the response
+            if (data.length > 0) {
+                var lat = data[0].lat;
+                var lng = data[0].lon;
+                
+                // Print lat and lon to the console
+                console.log("Latitude:", lat);
+                console.log("Longitude:", lng);
+                getOut(lat,lng);
+                
+                
+            } else {
+                console.log("Address could not be found.");
+            }
+        })
+        .catch(error => {
+            console.error("Error:", error);
+        });
+    
+    
+};
+
+function getOut(lat, lng){
+    // Redirect to Django view with lat/lng as query parameters
+    urlData= "{% url 'showPrecipitation' %}?lat=" + lat + "&lng=" + lng;
+    window.location.href =urlData;
+};
+</script>
+{%endblock%}

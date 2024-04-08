@@ -1,0 +1,89 @@
+<!DOCTYPE html>
+<html lang="en">
+{% load static  %}
+<head>
+    <meta charset="UTF-8">
+    <title>Plotting</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+<body>
+    <h2>Date and Values </h2>
+    <span><a href="#" onclick="downloadData()">
+        <img src="{% static "img/download.png" %}" alt="Download Data" width="24" height="24">
+    </a></span>
+    <table border="1">
+        <thead>
+            <tr>
+                <th>Column Dates</th>
+                <th>Ppt Values</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for row in rows %}
+                <tr>
+                    <td>{{ row.0 }}</td>
+                    <td>{{ row.1 }}</td>
+                </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    <canvas id="myChart" width="4000" height="400"></canvas>
+    
+
+    <script>
+        // Parse the rows data from Django into arrays
+        var dates = [];
+        var values = [];
+        {% for row in rows %}
+            dates.push("{{ row.0 }}");
+            values.push({{ row.1 }});
+        {% endfor %}
+
+        // Get the canvas element
+        var ctx = document.getElementById('myChart').getContext('2d');
+
+        // Create the chart
+        var myChart = new Chart(ctx, {
+            type: 'line',
+            data: {
+                labels: dates,
+                datasets: [{
+                    label: 'Ppt Values',
+                    data: values,
+                    backgroundColor: 'rgba(255, 99, 132, 0.2)',
+                    borderColor: 'rgba(255, 99, 132, 1)',
+                    borderWidth: 1
+                }]
+            },
+            options: {
+                scales: {
+                    yAxes: [{
+                        ticks: {
+                            beginAtZero: true
+                        }
+                    }]
+                }
+            }
+        });
+
+        // Convert data to CSV format
+        function convertToCSV() {
+            var csv = 'Date, Ppt Values\n';
+            {% for row in rows %}
+                csv += "{{ row.0 }},{{ row.1 }}\n";
+            {% endfor %}
+            return csv;
+        }
+
+        // Download data as CSV
+        function downloadData() {
+            var csvData = convertToCSV();
+            var blob = new Blob([csvData], { type: 'text/csv' });
+            var link = document.createElement('a');
+            link.href = window.URL.createObjectURL(blob);
+            link.download = 'time_series_data.csv';
+            link.click();
+        }
+    </script>
+</body>
+</html>
