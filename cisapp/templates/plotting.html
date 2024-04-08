@@ -11,6 +11,7 @@
     <span><a href="#" onclick="downloadData()">
         <img src="{% static "img/download.png" %}" alt="Download Data" width="24" height="24">
     </a></span>
+    <canvas id="myChart" width="4000" height="400"></canvas>
     <table border="1">
         <thead>
             <tr>
@@ -27,7 +28,7 @@
             {% endfor %}
         </tbody>
     </table>
-    <canvas id="myChart" width="4000" height="400"></canvas>
+    
     
 
     <script>

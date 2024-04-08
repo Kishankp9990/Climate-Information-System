@@ -70,10 +70,19 @@ def showwindspeed(request):
     # Convert the plot to HTML
     script, div = components(p)
 
-    # Pass the script and div to the template
+    df.index = pd.to_datetime(df.index)  # Assuming your index is already in datetime format, otherwise, convert it
+    # Drop latitude and longitude columns
+    df = df.drop(columns=['lat', 'lon'])
+
+    # Convert data to CSV format
+    csv_data = df.to_csv()
+
+    # Pass the CSV data along with the script and div to the template
     context = {
         'script': script,
         'div': div,
+        'csv_data': csv_data,
     }
+    print(csv_data)
     
     return render(request, 'showwindspeed.html', context)

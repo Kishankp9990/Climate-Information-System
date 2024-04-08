@@ -16,6 +16,8 @@ from django.conf import settings
 from django.templatetags.static import static
 
 
+
+
 def app1(request):
     return render(request,'app1.html')
 #.........................................................................................................
@@ -41,8 +43,8 @@ def showPrecipitation(request):
 
     # Create a Bokeh figure
     p = figure(title="Time Series Plot", x_axis_label='Date', y_axis_label='PPT', x_axis_type='datetime', width=1000)
-    print(df.index)
-    dATE=df.index
+    
+    
 
     # Plot the time series data
     p.line(df.index, df['APCP_sfc'], legend_label='PPT', line_width=2)
@@ -69,11 +71,20 @@ def showPrecipitation(request):
     # Convert the plot to HTML
     script, div = components(p)
 
-    # Pass the script and div to the template
+    df.index = pd.to_datetime(df.index)  # Assuming your index is already in datetime format, otherwise, convert it
+    # Drop latitude and longitude columns
+    df = df.drop(columns=['latitude', 'longitude'])
+
+    # Convert data to CSV format
+    csv_data = df.to_csv()
+
+    # Pass the CSV data along with the script and div to the template
     context = {
         'script': script,
         'div': div,
+        'csv_data': csv_data,
     }
+    print(csv_data)
     
     return render(request, 'showPrecipitation.html', context)
 
