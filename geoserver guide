@@ -1,0 +1,9 @@
+To open geoserver we need to go to its location first by using terminal i.e.
+                       cd usr/share/geoserver/bin
+then type below to open server
+                       ./startup.sh
+then we need to login using login id and password
+                        id- admin
+                        pwd- geoserver
+To close server type ./shutdown.sh
+

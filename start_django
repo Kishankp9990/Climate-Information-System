@@ -1,0 +1,10 @@
+to initiate a project in django, type in terminal:-
+			django-admin startproject <projectname>
+to run server type in terminal:-
+			python3 manage.py runserver
+to login as an admin we need to create superuser id nd pwd:-
+			python3 manage.py createsuperuser
+login id/pwd:-
+			id:- kishan
+			pwd:- admin
+
