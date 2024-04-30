@@ -59,9 +59,14 @@ def showwindspeed(request):
     red_line = p.line(df.index, y3, legend_label='Y3', line_width=0.5, color='red', visible=False)
 
     # Create toggle buttons
-    y2_toggle = Toggle(label="Y2", active=False, button_type="success")
-    y1_toggle = Toggle(label="Y1", active=False, button_type="success")
-    y3_toggle = Toggle(label="Y3", active=False, button_type="success")
+    y2_toggle = Toggle(label="Y2", active=True, button_type="success")
+    y1_toggle = Toggle(label="Y1", active=True, button_type="success")
+    y3_toggle = Toggle(label="Y3", active=True, button_type="success")
+
+    # Set visibility of lines to True
+    orange_line.visible = True
+    green_line.visible = True
+    red_line.visible = True    
 
     # Add callback to toggle visibility
     y2_toggle.js_link('active', orange_line, 'visible')
