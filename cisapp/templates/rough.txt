@@ -170,3 +170,115 @@ function getOut(lat, lng){
 
 document.getElementById('showPrecipitation').checked = true; // Automatically check Precipitation radio button
 
+
+
+# Plot the time series data
+p.line(df.index, df['__xarray_dataarray_variable__'], legend_label='Wind Speed', line_width=2)
+
+# Define y2, y1, and y3
+y2 = [3] * len(df)
+y1 = [1] * len(df)
+y3 = [5] * len(df)
+
+# y2 = 3
+y2 = [3] * len(df)
+p.line(df.index, y2, legend_label='Y2', line_width=0.5, color='orange')   
+# y1 = 1
+y1 = [1] * len(df)
+p.line(df.index, y1, legend_label='Y1', line_width=0.5, color='green')
+
+# y3 = 5
+y3 = [5] * len(df)
+p.line(df.index, y3, legend_label='Y3', line_width=0.5, color='red')
+
+
+
+
+def showwindspeed(request):
+    lat = request.GET.get('lat', None)
+    lng = request.GET.get('lng', None)
+    # Define path to NetCDF file (assuming 'nc' subfolder in static)
+    netcdf_file_path = os.path.join(settings.BASE_DIR, 'app2', 'static', 'nc', 'wind.nc')
+
+    # Read data from NetCDF file
+    ds = xr.open_dataset(netcdf_file_path)
+    valuearray = ds.__xarray_dataarray_variable__
+
+    # Select data at specific latitude and longitude
+    val = valuearray.sel(lon=lng, lat=lat, method='nearest')
+
+    # Convert data to a DataFrame
+    df = val.to_dataframe()
+
+    # Create a Bokeh figure
+    p = figure(title="Time Series Plot", x_axis_label='Date', y_axis_label='Wind Speed', x_axis_type='datetime', width=700)
+    print(df.index)
+
+    # Plot the wind speed
+    wind_speed_line = p.line(df.index, df['__xarray_dataarray_variable__'], legend_label='Wind Speed', line_width=2, color='blue')
+
+    # y2 = 3
+    y2 = [3] * len(df)
+    orange_line = p.line(df.index, y2, legend_label='Y2', line_width=0.5, color='orange', visible=False)
+
+    # y1 = 1
+    y1 = [1] * len(df)
+    green_line = p.line(df.index, y1, legend_label='Y1', line_width=0.5, color='green', visible=False)
+
+    # y3 = 5
+    y3 = [5] * len(df)
+    red_line = p.line(df.index, y3, legend_label='Y3', line_width=0.5, color='red', visible=False)
+
+    # Create toggle buttons
+    y2_toggle = Toggle(label="Y2", active=False)
+    y1_toggle = Toggle(label="Y1", active=False)
+    y3_toggle = Toggle(label="Y3", active=False)
+
+    # Add callback to toggle visibility
+    y2_toggle.js_link('active', orange_line, 'visible')
+    y1_toggle.js_link('active', green_line, 'visible')
+    y3_toggle.js_link('active', red_line, 'visible')
+
+    # Hide the Bokeh logo from the toolbar
+    p.toolbar.logo = None
+
+    # Add hover tool
+    hover = HoverTool(tooltips=[
+        ("Date", "@x{%d/%m/%Y}"),
+        ("Wind Speed", "@y"),
+    ], formatters={'@x': 'datetime'})
+    p.add_tools(hover)
+
+    tap = TapTool()
+    tap.callback = CustomJS(args=dict(hover=hover), code="""
+        if (!hover.active) {
+            hover.active = true;
+        } else {
+            hover.active = false;
+        }
+    """)
+    p.add_tools(tap)
+
+    # Convert the plot to HTML
+    script, div = components(p)
+
+    df.index = pd.to_datetime(df.index)  # Assuming your index is already in datetime format, otherwise, convert it
+    # Drop latitude and longitude columns
+    df = df.drop(columns=['lat', 'lon'])
+
+    # Convert data to CSV format
+    csv_data = df.to_csv()
+
+    # Pass the CSV data along with the script and div to the template
+    context = {
+        'script': script,
+        'div': div,
+        'csv_data': csv_data,
+        'y2_toggle': y2_toggle,
+        'y1_toggle': y1_toggle,
+        'y3_toggle': y3_toggle,
+    }
+
+    return render(request, 'showwindspeed.html', context)
+
+
