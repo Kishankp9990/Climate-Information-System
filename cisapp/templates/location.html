@@ -60,7 +60,7 @@ var globalLng;
 var currentPlotType="showPrecipitation";
 var currentAddress="";
 
-
+console.log(globalLat,globalLng);
 
 map.on('click', function (e) {
     var latlng = e.latlng;
@@ -168,12 +168,16 @@ document.querySelectorAll('input[name="plotType"]').forEach(function(radio) {
         var plotType = this.value;
         currentPlotType=plotType;
         
-        if (plotType === 'showPrecipitation') {
-            getOut(globalLat, globalLng);
-        } else if (plotType === 'showwindspeed') {
-            getOutw(globalLat, globalLng);
-        } else if (plotType === 'showtemp') {
-            getOutT(globalLat, globalLng);
+        if (globalLat && globalLng) {
+            if (plotType === 'showPrecipitation') {
+                getOut(globalLat, globalLng);
+            } else if (plotType === 'showwindspeed') {
+                getOutw(globalLat, globalLng);
+            } else if (plotType === 'showtemp') {
+                getOutT(globalLat, globalLng);
+            }
+        } else {
+            document.getElementById('address').innerHTML = 'Select the location first';
         }
     });
 });
