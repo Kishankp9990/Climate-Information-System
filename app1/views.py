@@ -48,6 +48,8 @@ def showPrecipitation(request):
 
     # Plot the time series data
     p.line(df.index, df['APCP_sfc'], legend_label='PPT', line_width=2)
+    # Hide the Bokeh logo from the toolbar
+    p.toolbar.logo = None
 
 
    # Add hover tool

@@ -1,22 +1,19 @@
 {% extends 'basic.html' %}
-{%block title%}info{% endblock %}
+{%block title%}general data{% endblock %}
 {%block css%}#map{
-    height: 700px; 
-    width:1000px;
-    margin:auto;}
-    #plot{
-    height: 700px; 
-    width:1000px;
-    margin:auto;}
+    height: 400px; 
+    width:500px;
+    margin-left:10px;}
+    
     {%endblock%}
 {%block body%}
+<div id="form">
 <form id="submitAddress">
     <input type="text" id="fname" name="fname" placeholder="type your address here"><br>
     <input type="submit" value="Submit">
     
-</form>
+</form></div>
 <div id="address"></div>
-<div id="map"></div>
 <!-- Add radio buttons to select plot type -->
 <div>
     <input type="radio" id="showPrecipitation" name="plotType" value="showPrecipitation" checked>
@@ -26,6 +23,7 @@
     <input type="radio" id="showtemp" name="plotType" value="showtemp">
     <label for="showtemp">Temperature</label>
 </div>
+<div id="map"></div>
 
 <div id="plot">Plot will load here</div>
 

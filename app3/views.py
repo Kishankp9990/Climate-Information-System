@@ -53,7 +53,8 @@ def showtemp(request):
     # Plot the time series data
     p.line(df.index, df['TMP_2m'], legend_label='Tmin', line_width=2, color="yellow")
     p.line(df1.index, df['TMP_2m'], legend_label='Tmax', line_width=0.5, color="green")
-
+    # Hide the Bokeh logo from the toolbar
+    p.toolbar.logo = None
 
    # Add hover tool
     hover = HoverTool(tooltips=[

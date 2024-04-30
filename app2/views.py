@@ -47,6 +47,8 @@ def showwindspeed(request):
 
     # Plot the time series data
     p.line(df.index, df['__xarray_dataarray_variable__'], legend_label='Wind Speed', line_width=2)
+    # Hide the Bokeh logo from the toolbar
+    p.toolbar.logo = None
 
 
    # Add hover tool
