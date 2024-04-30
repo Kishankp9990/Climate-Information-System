@@ -52,6 +52,7 @@ L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
 
 var globalLat;
 var globalLng;
+var currentPlotType="showPrecipitation";
 
 
 
@@ -64,10 +65,18 @@ map.on('click', function (e) {
     console.log(lat,lng);
 
 
-    
+    // Zoom to the searched location and place a draggable marker
+    map.setView([lat, lng], 10);
 
-    getOut(lat,lng);
-    document.getElementById('showPrecipitation').checked = true; // Automatically check Precipitation radio button
+
+    if (currentPlotType === 'showPrecipitation') {
+        getOut(globalLat, globalLng);
+    } else if (currentPlotType === 'showwindspeed') {
+        getOutw(globalLat, globalLng);
+    } else if (currentPlotType === 'showtemp') {
+        getOutT(globalLat, globalLng);
+    }
+    
 
 
    
@@ -102,8 +111,13 @@ document.getElementById("submitAddress").onsubmit = function(event) {
 
                 globalLat=lat;
                 globalLng=lng;
-                getOut(lat,lng);
-                document.getElementById('showPrecipitation').checked = true; // Automatically check Precipitation radio button
+                if (currentPlotType === 'showPrecipitation') {
+                    getOut(globalLat, globalLng);
+                } else if (currentPlotType === 'showwindspeed') {
+                    getOutw(globalLat, globalLng);
+                } else if (currentPlotType === 'showtemp') {
+                    getOutT(globalLat, globalLng);
+                }
                 
                 // Print lat and lon to the console
                 console.log("Latitude:", lat);
@@ -111,10 +125,7 @@ document.getElementById("submitAddress").onsubmit = function(event) {
 
                 // Zoom to the searched location and place a draggable marker
                 map.setView([lat, lng], 10);
-                if (marker) {
-                 map.removeLayer(marker);
-                 }
-                   marker = L.marker([lat, lng], { draggable: true }).addTo(map);
+                
                 
                 
                 
@@ -133,6 +144,8 @@ document.getElementById("submitAddress").onsubmit = function(event) {
 document.querySelectorAll('input[name="plotType"]').forEach(function(radio) {
     radio.addEventListener('change', function () {
         var plotType = this.value;
+        currentPlotType=plotType;
+        
         if (plotType === 'showPrecipitation') {
             getOut(globalLat, globalLng);
         } else if (plotType === 'showwindspeed') {
@@ -168,6 +181,7 @@ function fetchData(urlData) {
         .then(response => response.text())
         .then(html => {
             document.getElementById('plot').innerHTML = html;
+            
             // Find and execute the script within the inserted HTML
             const scripts = document.getElementById('plot').getElementsByTagName('script');
             for (let i = 0; i < scripts.length; i++) {

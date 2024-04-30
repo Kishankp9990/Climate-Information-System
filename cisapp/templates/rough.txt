@@ -168,5 +168,5 @@ function getOut(lat, lng){
 
 
 
-
+document.getElementById('showPrecipitation').checked = true; // Automatically check Precipitation radio button
 
