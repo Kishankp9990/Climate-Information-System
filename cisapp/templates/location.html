@@ -44,6 +44,10 @@
 
 // Set up the map
 var map = L.map('map').setView([22, 84], 5);
+// Set the marker
+var marker = L.marker([22, 84]).addTo(map);
+// Hide marker initially
+marker.setOpacity(0);
 
 // Add OpenStreetMap as the base layer
 L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
@@ -67,6 +71,15 @@ map.on('click', function (e) {
 
     // Zoom to the searched location and place a draggable marker
     map.setView([lat, lng], 10);
+    // Add marker to the clicked location
+    if (marker) {
+        map.removeLayer(marker); // Remove previous marker if it exists
+    }
+    marker = L.marker(latlng).addTo(map); // Add new marker
+    // Show marker
+    marker.setOpacity(1);
+
+    
 
 
     if (currentPlotType === 'showPrecipitation') {
@@ -125,6 +138,13 @@ document.getElementById("submitAddress").onsubmit = function(event) {
 
                 // Zoom to the searched location and place a draggable marker
                 map.setView([lat, lng], 10);
+                // Add marker to the clicked location
+                if (marker) {
+                    map.removeLayer(marker); // Remove previous marker if it exists
+                }
+                marker = L.marker([lat,lng]).addTo(map); // Add new marker
+                // Show marker
+                marker.setOpacity(1);
                 
                 
                 
