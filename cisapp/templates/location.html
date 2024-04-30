@@ -15,6 +15,7 @@
     <input type="submit" value="Submit">
     
 </form>
+<div id="address"></div>
 <div id="map"></div>
 <!-- Add radio buttons to select plot type -->
 <div>
@@ -57,6 +58,7 @@ L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
 var globalLat;
 var globalLng;
 var currentPlotType="showPrecipitation";
+var currentAddress="";
 
 
 
@@ -181,18 +183,21 @@ document.querySelectorAll('input[name="plotType"]').forEach(function(radio) {
 function getOut(lat, lng) {
     var urlData = "{% url 'showPrecipitation' %}?lat=" + lat + "&lng=" + lng;
     fetchData(urlData);
+    getAddressFromLatLng(lat, lng);
 };
 
     // Function to fetch data for Wind Speed
 function getOutw(lat, lng) {
     var urlData = "{% url 'showwindspeed' %}?lat=" + lat + "&lng=" + lng;
     fetchData(urlData);
+    getAddressFromLatLng(lat, lng);
 };
 
     // Function to fetch data for Temperature
 function getOutT(lat, lng) {
     var urlData = "{% url 'showtemp' %}?lat=" + lat + "&lng=" + lng;
     fetchData(urlData);
+    getAddressFromLatLng(lat, lng);
 };
 
     // Function to fetch data using Fetch API
@@ -214,5 +219,26 @@ function fetchData(urlData) {
             console.error("Error:", error);
         });
 };
+console.log(currentAddress);
+function getAddressFromLatLng(lat, lng) {
+    // Construct the API URL
+    var apiUrl = `https://nominatim.openstreetmap.org/reverse?format=geojson&lat=${lat}&lon=${lng}
+        `;
+
+    // Make a GET request
+    fetch(apiUrl)
+        .then(response => response.json())
+        .then(data => {
+        // Access the display_name property inside the first feature
+        var displayName = data.features[0].properties.display_name;
+        currentAddress=displayName;
+        console.log(currentAddress);
+        document.getElementById('address').innerHTML = 'Showing result for the address:  '+currentAddress;
+        })
+        .catch(error => {
+            console.error("Error:", error);
+        });
+}
+
 </script>
 {%endblock%}
