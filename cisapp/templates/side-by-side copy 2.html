@@ -1,0 +1,1171 @@
+<!DOCTYPE html>
+{% load static  %}
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Climate-Dashboard-Workflow</title>
+
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+    <script src='https://unpkg.com/leaflet@1.9.4/dist/leaflet.js'></script>
+    <script src="{% static "leaflet-side-by-side-gh-pages/leaflet-side-by-side.js" %}"></script>
+    <style>
+    body {
+        margin: 0;
+        padding: 0;
+    }
+    #map {
+        position: absolute;
+        bottom: 0;
+    }
+    </style> 
+</head>
+
+<body>
+<div>
+    <input type="radio" id="single" name="pageview" value="single" checked>
+    <label for="single">single</label>
+    <input type="radio" id="compare" name="pageview" value="compare">
+    <label for="compare">compare</label>
+</div>
+
+<!--add radio buttons for regional scale-->
+<div>
+    <input type="radio" id="location" name="regional" value="location" checked>
+    <label for="location">Location</label>
+    <input type="radio" id="state" name="regional" value="state">
+    <label for="state">state</label>
+    <input type="radio" id="district" name="regional" value="district">
+    <label for="district">district</label>
+    <input type="radio" id="basin" name="regional" value="basin">
+    <label for="basin">basin</label>
+    <input type="radio" id="latlng" name="regional" value="latlng">
+    <label for="latlng">latlng</label>
+    <div id="latlng-inputs" style="display:none;">
+        <label for="latitude">Latitude:</label>
+        <input type="number" id="latitude" name="latitude" step="any">
+        <label for="longitude">Longitude:</label>
+        <input type="number" id="longitude" name="longitude" step="any">
+        <button onclick="submitLatLng()">Submit</button>
+    </div>
+</div>
+    <!-- Add radio buttons to select plot type -->
+<div>
+    <input type="radio" id="showPrecipitation" name="plotType" value="showPrecipitation" checked>
+    <label for="showPrecipitation">Precipitation</label>
+    <input type="radio" id="Tmax" name="plotType" value="Tmax">
+    <label for="Tmax">Tmax</label>
+    <input type="radio" id="Tmin" name="plotType" value="Tmin">
+    <label for="Tmin">Tmin</label>
+</div>
+<!--add radio buttons for temporal scale-->
+<div>
+    <input type="radio" id="annual" name="temporal" value="annual" checked>
+    <label for="annual">annual</label>
+    <input type="radio" id="monthly" name="temporal" value="monthly">
+    <label for="monthly">monthly</label>
+    <input type="radio" id="daily" name="temporal" value="daily">
+    <label for="daily">daily</label>
+</div>
+<button id="download-btn">Download Data</button>
+    <div id="address"></div>
+    <div id="plot"></div>
+    <div id='map'style="height:40%;width:40%;margin-left:50%;"></div>
+
+<script src="https://cdn.bokeh.org/bokeh/release/bokeh-3.4.0.min.js"></script>
+<script src="https://cdn.bokeh.org/bokeh/release/bokeh-widgets-3.4.0.min.js"></script>
+<script src="https://cdn.bokeh.org/bokeh/release/bokeh-tables-3.4.0.min.js"></script>
+<script src="https://cdn.bokeh.org/bokeh/release/bokeh-api-3.4.0.min.js"></script>
+    <script>
+    var gLat=22;
+    var gLng=84;
+    var gplotType="showPrecipitation";
+    var gtemporal="annual";
+    var gregional="location";
+    var currentAddress="";
+    var gurl="";
+    var gstyle;
+    var gboollatlng=false;
+    var gpageview="single";
+    var gSessionKey;
+
+    var map = L.map('map').setView([gLat, gLng], 4);
+        //by default location is checked.
+    var osmLayer = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        attribution: '© OpenStreetMap contributors'
+    }).addTo(map);
+
+    // Add your GeoServer WMS layer
+var nexrad = L.tileLayer.wms('http://172.18.16.22:8080/geoserver/cis/wms', {
+    layers: 'cis:HP_fill',
+    format: 'image/png',
+    transparent: true,
+    attribution: "testing wms district"
+    });
+    var stamenLayer = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+    });
+    sbslayer=L.control.sideBySide(osmLayer, stamenLayer);
+    //osm layer->wms layer->osm layer->side-by-side control. this is the order to make it work
+
+
+
+
+function removeAllLayers() {
+    map.eachLayer(function(layer) {
+        map.removeLayer(layer);
+    });
+}
+
+function showlocation(gLat, gLng, gurl, gtemporal, gregional){
+    removeAllLayers();
+    map.removeControl(sbslayer);
+    osmLayer.addTo(map);
+    if(gpageview==='compare'){
+    nexrad.addTo(map);
+    stamenLayer.addTo(map);
+    sbslayer.addTo(map);
+    console.log("well done");
+    
+        // Function to print layer names
+        function printLayerNames(layer) {
+            if (layer.options && layer.options.layers) {
+                console.log('Layer Name:', layer.options.layers);
+            } else {
+                console.log('Layer Name: Base Layer or Other');
+            }
+        }
+        // Use eachLayer to iterate over layers and print their names
+        map.eachLayer(printLayerNames);
+    }
+      
+
+
+
+};
+function showstate(gLat, gLng, gurl, gtemporal, gregional){
+    var a=`<?xml version="1.0" encoding="UTF-8"?>
+    <StyledLayerDescriptor xmlns="http://www.opengis.net/sld" xsi:schemaLocation="http://www.opengis.net/sld http://schemas.opengis.net/sld/1.1.0/StyledLayerDescriptor.xsd" xmlns:xlink="http://www.w3.org/1999/xlink" xmlns:se="http://www.opengis.net/se" xmlns:ogc="http://www.opengis.net/ogc" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" version="1.1.0">
+    <NamedLayer>
+        <se:Name>India_State_Boundary</se:Name>
+        <UserStyle>
+        <se:Name>India_State_Boundary</se:Name>
+        <se:FeatureTypeStyle>`;
+    var b=`
+    <se:Rule>
+    <se:PolygonSymbolizer>
+        <se:Fill>
+        <se:SvgParameter name="fill">#FF0000</se:SvgParameter> <!-- Red -->
+        <se:SvgParameter name="fill-opacity">0.1</se:SvgParameter> <!-- 50% transparency -->
+        </se:Fill>
+        <se:Stroke>
+        <se:SvgParameter name="stroke">#0000FF</se:SvgParameter> <!-- Blue -->
+        <se:SvgParameter name="stroke-width">0.5</se:SvgParameter>
+        <se:SvgParameter name="stroke-linejoin">bevel</se:SvgParameter>
+        </se:Stroke>
+    </se:PolygonSymbolizer>
+    </se:Rule>`;
+    var c=`</se:FeatureTypeStyle>
+    </UserStyle>
+    </NamedLayer>
+    </StyledLayerDescriptor>`;
+    var default_style=a+b+c;
+    var state = L.tileLayer.wms('http://172.18.16.22:8080/geoserver/cis/wms', {
+        layers: 'cis:India_State_Boundary',
+        format: 'image/png',
+        sld_body:default_style,
+        transparent: true,
+        attribution: "tap on the slider and use arrow key to move slider"
+        });
+    removeAllLayers();
+    map.removeControl(sbslayer);
+    osmLayer.addTo(map);
+    if(gpageview==='compare'){
+        state.addTo(map);
+        stamenLayer.addTo(map);
+        sbslayer.addTo(map);
+        console.log("well done");
+    }else{
+        state.addTo(map);}
+
+
+};
+function showdistrict(gLat, gLng, gurl, gtemporal, gregional){
+    var a=`<?xml version="1.0" encoding="UTF-8"?>
+    <StyledLayerDescriptor xmlns="http://www.opengis.net/sld" xsi:schemaLocation="http://www.opengis.net/sld http://schemas.opengis.net/sld/1.1.0/StyledLayerDescriptor.xsd" xmlns:xlink="http://www.w3.org/1999/xlink" xmlns:se="http://www.opengis.net/se" xmlns:ogc="http://www.opengis.net/ogc" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" version="1.1.0">
+    <NamedLayer>
+        <se:Name>output</se:Name>
+        <UserStyle>
+        <se:Name>output</se:Name>
+        <se:FeatureTypeStyle>`;
+    var b=`
+    <se:Rule>
+    <se:PolygonSymbolizer>
+        <se:Fill>
+        <se:SvgParameter name="fill">#FF0000</se:SvgParameter> <!-- Red -->
+        <se:SvgParameter name="fill-opacity">0.1</se:SvgParameter> <!-- 50% transparency -->
+        </se:Fill>
+        <se:Stroke>
+        <se:SvgParameter name="stroke">#0000FF</se:SvgParameter> <!-- Blue -->
+        <se:SvgParameter name="stroke-width">0.5</se:SvgParameter>
+        <se:SvgParameter name="stroke-linejoin">bevel</se:SvgParameter>
+        </se:Stroke>
+    </se:PolygonSymbolizer>
+    </se:Rule>`;
+    var c=`</se:FeatureTypeStyle>
+    </UserStyle>
+    </NamedLayer>
+    </StyledLayerDescriptor>`;
+    var default_style=a+b+c;
+    var district = L.tileLayer.wms('http://172.18.16.22:8080/geoserver/cis/wms', {
+        layers: 'cis:output',
+        format: 'image/png',
+        sld_body:default_style,
+        transparent: true,
+        attribution: "tap on the slider and use arrow key to move slider"
+        });
+    removeAllLayers();
+    map.removeControl(sbslayer);
+    osmLayer.addTo(map);
+    if(gpageview==='compare'){
+    district.addTo(map);
+    stamenLayer.addTo(map);
+    sbslayer.addTo(map);
+    console.log("well done");
+    }else{
+    district.addTo(map);
+    }
+
+
+};
+function showbasin(gLat, gLng, gurl, gtemporal, gregional){
+    var a=`<?xml version="1.0" encoding="UTF-8"?>
+    <StyledLayerDescriptor xmlns="http://www.opengis.net/sld" xsi:schemaLocation="http://www.opengis.net/sld http://schemas.opengis.net/sld/1.1.0/StyledLayerDescriptor.xsd" xmlns:xlink="http://www.w3.org/1999/xlink" xmlns:se="http://www.opengis.net/se" xmlns:ogc="http://www.opengis.net/ogc" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" version="1.1.0">
+    <NamedLayer>
+        <se:Name>India</se:Name>
+        <UserStyle>
+        <se:Name>India</se:Name>
+        <se:FeatureTypeStyle>`;
+    var b=`
+    <se:Rule>
+    <se:PolygonSymbolizer>
+        <se:Fill>
+        <se:SvgParameter name="fill">#FF0000</se:SvgParameter> <!-- Red -->
+        <se:SvgParameter name="fill-opacity">0.1</se:SvgParameter> <!-- 50% transparency -->
+        </se:Fill>
+        <se:Stroke>
+        <se:SvgParameter name="stroke">#0000FF</se:SvgParameter> <!-- Blue -->
+        <se:SvgParameter name="stroke-width">0.5</se:SvgParameter>
+        <se:SvgParameter name="stroke-linejoin">bevel</se:SvgParameter>
+        </se:Stroke>
+    </se:PolygonSymbolizer>
+    </se:Rule>`;
+    var c=`</se:FeatureTypeStyle>
+    </UserStyle>
+    </NamedLayer>
+    </StyledLayerDescriptor>`;
+    var default_style=a+b+c;
+    var basin = L.tileLayer.wms('http://172.18.16.22:8080/geoserver/cis/wms', {
+        layers: 'cis:India',
+        format: 'image/png',
+        sld_body:default_style,
+        transparent: true,
+        attribution: "tap on the slider and use arrow key to move slider"
+        });
+    removeAllLayers();
+    map.removeControl(sbslayer);
+    osmLayer.addTo(map);
+    if(gpageview==='compare'){
+    basin.addTo(map);
+    stamenLayer.addTo(map);
+    sbslayer.addTo(map);
+    console.log("well done");
+    }else{
+        
+        basin.addTo(map);
+    }
+
+};
+function showlatlng(gLat, gLng, gurl, gtemporal, gregional){
+    removeAllLayers();
+    map.removeControl(sbslayer);
+    osmLayer.addTo(map);
+    document.getElementById('latlng-inputs').style.display='block';
+    if(gpageview==='compare'){
+    nexrad.addTo(map);
+    stamenLayer.addTo(map);
+    sbslayer.addTo(map);
+    }
+};
+// Attach event listeners to regional radio buttons
+document.querySelectorAll('input[name="regional"]').forEach(function(radio) {
+    radio.addEventListener('change', function () {
+        var plotType = this.value;
+        gregional=plotType;
+        
+        
+        if (gLat && gLng) {
+            if (gregional === 'location') {
+                document.getElementById('latlng-inputs').style.display='none';
+                if(gboollatlng==true){if (gLat && gLng) {
+                    if (gregional === 'location') {
+                        document.getElementById('latlng-inputs').style.display='none';
+                        if(gboollatlng==true){
+                            gLat=22;
+                            gLng=84;
+                            map.setView([gLat, gLng], 4);
+                        }
+                        gboollatlng=false;
+                        
+                        showlocation(gLat, gLng, gurl, gtemporal, gregional);
+                    } else if (gregional === 'state') {
+                        document.getElementById('latlng-inputs').style.display='none';
+                        if(gboollatlng==true){
+                            gLat=22;
+                            gLng=84;
+                            map.setView([gLat, gLng], 4);
+                        }
+                        gboollatlng=false;
+                        showstate(gLat, gLng, gurl, gtemporal, gregional);
+                    } else if (gregional === 'district') {
+                        document.getElementById('latlng-inputs').style.display='none';
+                        if(gboollatlng==true){
+                            gLat=22;
+                            gLng=84;
+                            map.setView([gLat, gLng], 4);
+                        }
+                        gboollatlng=false;
+                        showdistrict(gLat, gLng, gurl, gtemporal, gregional);
+                    } else if (gregional === 'basin') {
+                        document.getElementById('latlng-inputs').style.display='none';
+                        if(gboollatlng==true){
+                            gLat=22;
+                            gLng=84;
+                            map.setView([gLat, gLng], 4);
+                        }
+                        gboollatlng=false;
+                        showbasin(gLat, gLng, gurl, gtemporal, gregional);
+                    }else{
+                        gboollatlng=true;
+                        showlatlng(gLat, gLng, gurl, gtemporal, gregional)
+                    }
+                }
+                    gLat=22;
+                    gLng=84;
+                    map.setView([gLat, gLng], 4);
+                }
+                gboollatlng=false;
+                showlocation(gLat, gLng, gurl, gtemporal, gregional);
+            } else if (gregional === 'state') {
+                document.getElementById('latlng-inputs').style.display='none';
+                if(gboollatlng==true){
+                    gLat=22;
+                    gLng=84;
+                    map.setView([gLat, gLng], 4);
+                }
+                gboollatlng=false;
+                showstate(gLat, gLng, gurl, gtemporal, gregional);
+            } else if (gregional === 'district') {
+                document.getElementById('latlng-inputs').style.display='none';
+                if(gboollatlng==true){
+                    gLat=22;
+                    gLng=84;
+                    map.setView([gLat, gLng], 4);
+                }
+                gboollatlng=false;
+                showdistrict(gLat, gLng, gurl, gtemporal, gregional);
+            } else if (gregional === 'basin') {
+                document.getElementById('latlng-inputs').style.display='none';
+                if(gboollatlng==true){
+                    gLat=22;
+                    gLng=84;
+                    map.setView([gLat, gLng], 4);
+                }
+                gboollatlng=false;
+                showbasin(gLat, gLng, gurl, gtemporal, gregional);
+            }else{
+                gboollatlng=true;
+                showlatlng(gLat, gLng, gurl, gtemporal, gregional)
+            }
+        }
+    });
+});
+// Attach event listeners to show type of data radio buttons
+document.querySelectorAll('input[name="plotType"]').forEach(function(radio) {
+    radio.addEventListener('change', function () {
+        var plotType = this.value;
+        gplotType=plotType;
+        
+        if (gLat && gLng) {
+            if (gplotType === 'showPrecipitation') {
+                getOut(gLat, gLng, gurl, gtemporal,gregional);
+            } else if (gplotType === 'Tmax') {
+                getOutTmax(gLat, gLng, gurl, gtemporal,gregional);
+            } else if (plotType === 'Tmin') {
+                getOutTmin(gLat, gLng, gurl, gtemporal,gregional);
+            } 
+        }
+    });
+});
+// Attach event listeners to pageview radio buttons
+document.querySelectorAll('input[name="pageview"]').forEach(function(radio) {
+    radio.addEventListener('change', function () {
+        var plotType = this.value;
+        gpageview=plotType;
+        
+        if (gpageview==="single") {
+            if (gLat && gLng) {
+                if (gregional === 'location') {
+                    document.getElementById('latlng-inputs').style.display='none';
+                    if(gboollatlng==true){
+                        gLat=22;
+                        gLng=84;
+                        map.setView([gLat, gLng], 4);
+                    }
+                    gboollatlng=false;
+                    showlocation(gLat, gLng, gurl, gtemporal, gregional);
+                } else if (gregional === 'state') {
+                    document.getElementById('latlng-inputs').style.display='none';
+                    if(gboollatlng==true){
+                        gLat=22;
+                        gLng=84;
+                        map.setView([gLat, gLng], 4);
+                    }
+                    gboollatlng=false;
+                    showstate(gLat, gLng, gurl, gtemporal, gregional);
+                } else if (gregional === 'district') {
+                    document.getElementById('latlng-inputs').style.display='none';
+                    if(gboollatlng==true){
+                        gLat=22;
+                        gLng=84;
+                        map.setView([gLat, gLng], 4);
+                    }
+                    gboollatlng=false;
+                    showdistrict(gLat, gLng, gurl, gtemporal, gregional);
+                } else if (gregional === 'basin') {
+                    document.getElementById('latlng-inputs').style.display='none';
+                    if(gboollatlng==true){
+                        gLat=22;
+                        gLng=84;
+                        map.setView([gLat, gLng], 4);
+                    }
+                    gboollatlng=false;
+                    showbasin(gLat, gLng, gurl, gtemporal, gregional);
+                }else{
+                    gboollatlng=true;
+                    showlatlng(gLat, gLng, gurl, gtemporal, gregional)
+                }
+            }
+        }else{
+            if (gLat && gLng) {
+                if (gregional === 'location') {
+                    document.getElementById('latlng-inputs').style.display='none';
+                    if(gboollatlng==true){
+                        gLat=22;
+                        gLng=84;
+                        map.setView([gLat, gLng], 4);
+                    }
+                    gboollatlng=false;
+                    showlocation(gLat, gLng, gurl, gtemporal, gregional);
+                } else if (gregional === 'state') {
+                    document.getElementById('latlng-inputs').style.display='none';
+                    if(gboollatlng==true){
+                        gLat=22;
+                        gLng=84;
+                        map.setView([gLat, gLng], 4);
+                    }
+                    gboollatlng=false;
+                    showstate(gLat, gLng, gurl, gtemporal, gregional);
+                } else if (gregional === 'district') {
+                    document.getElementById('latlng-inputs').style.display='none';
+                    if(gboollatlng==true){
+                        gLat=22;
+                        gLng=84;
+                        map.setView([gLat, gLng], 4);
+                    }
+                    gboollatlng=false;
+                    showdistrict(gLat, gLng, gurl, gtemporal, gregional);
+                } else if (gregional === 'basin') {
+                    document.getElementById('latlng-inputs').style.display='none';
+                    if(gboollatlng==true){
+                        gLat=22;
+                        gLng=84;
+                        map.setView([gLat, gLng], 4);
+                    }
+                    gboollatlng=false;
+                    showbasin(gLat, gLng, gurl, gtemporal, gregional);
+                }else{
+                    gboollatlng=true;
+                    showlatlng(gLat, gLng, gurl, gtemporal, gregional)
+                }
+            }
+        }
+    });
+});
+// Function to fetch data using Fetch API
+async function fetchwmsdata(temp) {
+    // Make a GetFeatureInfo request to GeoServer
+    var uRl = temp;
+    try {
+        const response = await fetch(uRl);
+        const data = await response.text();
+
+        // Parse the response data
+        var lines = data.trim().split('\n');
+        var featureInfo = {};
+        lines.forEach(line => {
+            var parts = line.split('=');
+            if (parts.length === 2) {
+                var key = parts[0].trim();
+                var value = parts[1].trim();
+                featureInfo[key] = value;
+            }
+        });
+        var objectid;
+        // Store individual pieces of data and filter it 
+        if(gregional==='district'){
+            var tempobj = featureInfo['objectid'];
+            objectid=tempobj;
+            var distname = featureInfo['distname'];
+            
+            document.getElementById('address').innerHTML = distname;}
+            else if(gregional==='state'){
+                var tempobj = featureInfo['object'];
+                objectid=tempobj;
+                var statename = featureInfo['Name'];
+                console.log(objectid,"for state");
+                document.getElementById('address').innerHTML = statename;}
+            else if(gregional==='basin'){
+                var tempobj = featureInfo['OBJECTID'];
+                objectid=tempobj;
+                var basinname = featureInfo['BA_NAME'];
+                console.log(objectid,"for basin");
+                document.getElementById('address').innerHTML = basinname;}
+        return objectid;
+    } catch (error) {
+        console.error("Error:", error);
+        return null; // Return null in case of error
+    }
+};
+
+    // Function to fetch data using Fetch API
+    function fetchData(urlData) {
+        fetch(urlData)
+            .then(response => response.text())
+            .then(html => {
+            
+                document.getElementById('plot').innerHTML = html;
+                console.log("data response inserted")
+                // Find and execute the script within the inserted HTML
+                const scripts = document.getElementById('plot').getElementsByTagName('script');
+                for (let i = 0; i < scripts.length; i++) {
+                    const script = document.createElement('script');
+                    script.textContent = scripts[i].textContent;
+                    document.body.appendChild(script);
+                }
+            })
+            .catch(error => {
+                console.error("Error:", error);
+            });
+            
+    }; 
+
+
+async function getOut(gLat, gLng, gurl,gtemporal,gregional){
+    var temp=gurl;
+    var templat=gLat;
+    var tempLng=gLng;
+    var tTemporal=gtemporal;
+    var gregional=gregional;
+    var turl;
+    console.log("precipitation called")
+    if(gregional==='location'||gregional==='latlng'){
+            if(tTemporal==='annual'){
+                
+                var urlData = "{% url 'ppt_view_netcdf_annual' %}?lat=" + templat + "&lng=" + tempLng +"&tTemporal="+tTemporal;
+                turl=urlData;
+                var key='ppt_view_netcdf_annual';
+                gSessionKey=key;
+            } else if(tTemporal==='monthly'){
+                
+                var urlData = "{% url 'ppt_view_netcdf_monthly' %}?lat=" + templat + "&lng=" + tempLng +"&tTemporal="+tTemporal;
+                turl=urlData;
+                var key='ppt_view_netcdf_monthly';
+                gSessionKey=key;
+            }
+              else if(tTemporal==='daily'){
+                
+                var urlData = "{% url 'ppt_view_netcdf_daily' %}?lat=" + templat + "&lng=" + tempLng +"&tTemporal="+tTemporal;
+                turl=urlData;
+                var key='ppt_view_netcdf_daily';
+                gSessionKey=key;
+                
+                
+              }
+         } 
+    var objectid = await fetchwmsdata(temp);
+    if(tTemporal==='annual'){
+        if(gregional==='district'){
+            if ((!objectid)) {
+                alert("Please select the shapefile. ");
+                return; // Exit the function if the object ID is not an integer
+            }
+            var urlData = "{% url 'ppt_view_csv_annual_district' %}?objectid=" + objectid +"&tTemporal="+tTemporal;
+            turl=urlData;
+            var key='ppt_view_csv_annual_district';
+            gSessionKey=key;
+        }else if(gregional==='state'){
+            if ((!objectid)) {
+                alert("Please select the shapefile. ");
+                return; // Exit the function if the object ID is not an integer
+            }
+            var urlData = "{% url 'ppt_view_csv_annual_state' %}?objectid=" + objectid +"&tTemporal="+tTemporal;
+            turl=urlData;
+            var key='ppt_view_csv_annual_state';
+            gSessionKey=key;
+        }else if(gregional==='basin'){
+            if ((!objectid)) {
+                alert("Please select the shapefile. ");
+                return; // Exit the function if the object ID is not an integer
+            }
+            var urlData = "{% url 'ppt_view_csv_annual_basin' %}?objectid=" + objectid +"&tTemporal="+tTemporal;
+            turl=urlData;
+            var key='ppt_view_csv_annual_basin';
+            gSessionKey=key;
+        }
+        
+    } else if(tTemporal==='monthly'){
+        if(gregional==='district'){
+            if ((!objectid)) {
+                alert("Please select the shapefile. ");
+                return; // Exit the function if the object ID is not an integer
+            }
+            var urlData = "{% url 'ppt_view_csv_monthly_district' %}?objectid=" + objectid +"&tTemporal="+tTemporal;
+        turl=urlData;
+            var key='ppt_view_csv_monthly_district';
+            gSessionKey=key;
+        }else if(gregional==='state'){
+            if ((!objectid)) {
+                alert("Please select the shapefile. ");
+                return; // Exit the function if the object ID is not an integer
+            }
+            var urlData = "{% url 'ppt_view_csv_monthly_state' %}?objectid=" + objectid +"&tTemporal="+tTemporal;
+        turl=urlData;
+            var key='ppt_view_csv_monthly_state';
+            gSessionKey=key;
+        }else if(gregional==='basin'){
+            if ((!objectid)) {
+                alert("Please select the shapefile. ");
+                return; // Exit the function if the object ID is not an integer
+            }
+            var urlData = "{% url 'ppt_view_csv_monthly_basin' %}?objectid=" + objectid +"&tTemporal="+tTemporal;
+            turl=urlData;
+            var key='ppt_view_csv_monthly_basin';
+            gSessionKey=key;
+        }
+        
+    }
+      else if(tTemporal==='daily'){
+        if(gregional==='district'){
+            if ((!objectid)) {
+                alert("Please select the shapefile. ");
+                return; // Exit the function if the object ID is not an integer
+            }
+            var urlData = "{% url 'ppt_view_csv_daily_district' %}?objectid=" + objectid +"&tTemporal="+tTemporal;
+        turl=urlData;
+            var key='ppt_view_csv_daily_district';
+            gSessionKey=key;
+        }else if(gregional==='state'){
+            if ((!objectid)) {
+                alert("Please select the shapefile. ");
+                return; // Exit the function if the object ID is not an integer
+            }
+            var urlData = "{% url 'ppt_view_csv_daily_state' %}?objectid=" + objectid +"&tTemporal="+tTemporal;
+        turl=urlData;
+            var key='ppt_view_csv_daily_state';
+            gSessionKey=key;
+        }else if(gregional==='basin'){
+            if ((!objectid)) {
+                alert("Please select the shapefile. ");
+                return; // Exit the function if the object ID is not an integer
+            }
+            var urlData = "{% url 'ppt_view_csv_daily_basin' %}?objectid=" + objectid +"&tTemporal="+tTemporal;
+            turl=urlData;
+            var key='ppt_view_csv_daily_basin';
+            gSessionKey=key;
+        }
+        
+      }
+    
+    fetchData(turl);
+    //getAddressFromLatLng(lat, lng);
+};
+async function getOutTmax(gLat, gLng, gurl,gtemporal,gregional){
+    var temp=gurl;
+    var templat=gLat;
+    var tempLng=gLng;
+    var tTemporal=gtemporal;
+    var gregional=gregional;
+    var turl;
+    console.log("tmax called")
+    if(gregional==='location'||gregional==='latlng'){
+            if(tTemporal==='annual'){
+                
+                var urlData = "{% url 'tmax_view_netcdf_annual' %}?lat=" + templat + "&lng=" + tempLng +"&tTemporal="+tTemporal;
+                turl=urlData;
+            var key='tmax_view_netcdf_annual';
+            gSessionKey=key;
+            } else if(tTemporal==='monthly'){
+                
+                var urlData = "{% url 'tmax_view_netcdf_monthly' %}?lat=" + templat + "&lng=" + tempLng +"&tTemporal="+tTemporal;
+                turl=urlData;
+            var key='tmax_view_netcdf_monthly';
+            gSessionKey=key;
+            }
+              else if(tTemporal==='daily'){
+                
+                var urlData = "{% url 'tmax_view_netcdf_daily' %}?lat=" + templat + "&lng=" + tempLng +"&tTemporal="+tTemporal;
+                turl=urlData;
+            var key='tmax_view_netcdf_daily';
+            gSessionKey=key;
+              }
+         } 
+    var objectid = await fetchwmsdata(temp);
+    if(tTemporal==='annual'){
+        if(gregional==='district'){
+            if ((!objectid)) {
+                alert("Please select the shapefile. ");
+                return; // Exit the function if the object ID is not an integer
+            }
+            var urlData = "{% url 'tmax_view_csv_annual_district' %}?objectid=" + objectid +"&tTemporal="+tTemporal;
+        turl=urlData;
+            var key='tmax_view_csv_annual_district';
+            gSessionKey=key;
+        }else if(gregional==='state'){
+            if ((!objectid)) {
+                alert("Please select the shapefile. ");
+                return; // Exit the function if the object ID is not an integer
+            }
+            var urlData = "{% url 'tmax_view_csv_annual_state' %}?objectid=" + objectid +"&tTemporal="+tTemporal;
+        turl=urlData;
+            var key='tmax_view_csv_annual_state';
+            gSessionKey=key;
+        }else if(gregional==='basin'){
+            if ((!objectid)) {
+                alert("Please select the shapefile. ");
+                return; // Exit the function if the object ID is not an integer
+            }
+            var urlData = "{% url 'tmax_view_csv_annual_basin' %}?objectid=" + objectid +"&tTemporal="+tTemporal;
+            turl=urlData;
+            var key='tmax_view_csv_annual_basin';
+            gSessionKey=key;
+        }
+        
+    } else if(tTemporal==='monthly'){
+        if(gregional==='district'){
+            if ((!objectid)) {
+                alert("Please select the shapefile. ");
+                return; // Exit the function if the object ID is not an integer
+            }
+            var urlData = "{% url 'tmax_view_csv_monthly_district' %}?objectid=" + objectid +"&tTemporal="+tTemporal;
+        turl=urlData;
+            var key='tmax_view_csv_monthly_district';
+            gSessionKey=key;
+        }else if(gregional==='state'){
+            if ((!objectid)) {
+                alert("Please select the shapefile. ");
+                return; // Exit the function if the object ID is not an integer
+            }
+            var urlData = "{% url 'tmax_view_csv_monthly_state' %}?objectid=" + objectid +"&tTemporal="+tTemporal;
+        turl=urlData;
+            var key='tmax_view_csv_monthly_state';
+            gSessionKey=key;
+        }else if(gregional==='basin'){
+            if ((!objectid)) {
+                alert("Please select the shapefile. ");
+                return; // Exit the function if the object ID is not an integer
+            }
+            var urlData = "{% url 'tmax_view_csv_monthly_basin' %}?objectid=" + objectid +"&tTemporal="+tTemporal;
+            turl=urlData;
+            var key='tmax_view_csv_monthly_basin';
+            gSessionKey=key;
+        }
+        
+    }
+      else if(tTemporal==='daily'){
+        if(gregional==='district'){
+            if ((!objectid)) {
+                alert("Please select the shapefile. ");
+                return; // Exit the function if the object ID is not an integer
+            }
+            var urlData = "{% url 'tmax_view_csv_daily_district' %}?objectid=" + objectid +"&tTemporal="+tTemporal;
+        turl=urlData;
+            var key='tmax_view_csv_daily_district';
+            gSessionKey=key;
+        }else if(gregional==='state'){
+            if ((!objectid)) {
+                alert("Please select the shapefile. ");
+                return; // Exit the function if the object ID is not an integer
+            }
+            var urlData = "{% url 'tmax_view_csv_daily_state' %}?objectid=" + objectid +"&tTemporal="+tTemporal;
+        turl=urlData;
+            var key='tmax_view_csv_daily_state';
+            gSessionKey=key;
+        }else if(gregional==='basin'){
+            if ((!objectid)) {
+                alert("Please select the shapefile. ");
+                return; // Exit the function if the object ID is not an integer
+            }
+            var urlData = "{% url 'tmax_view_csv_daily_basin' %}?objectid=" + objectid +"&tTemporal="+tTemporal;
+            turl=urlData;
+            var key='tmax_view_csv_daily_basin';
+            gSessionKey=key;
+        }
+      }
+    
+    fetchData(turl);
+    //getAddressFromLatLng(lat, lng);
+};
+async function getOutTmin(gLat, gLng, gurl,gtemporal,gregional){
+    var temp=gurl;
+    var templat=gLat;
+    var tempLng=gLng;
+    var tTemporal=gtemporal;
+    var gregional=gregional;
+    var turl;
+    console.log("tmax called")
+    if(gregional==='location'||gregional==='latlng'){
+            if(tTemporal==='annual'){
+                
+                var urlData = "{% url 'tmin_view_netcdf_annual' %}?lat=" + templat + "&lng=" + tempLng +"&tTemporal="+tTemporal;
+                turl=urlData;
+            var key='tmin_view_netcdf_annual';
+            gSessionKey=key;
+            } else if(tTemporal==='monthly'){
+                
+                var urlData = "{% url 'tmin_view_netcdf_monthly' %}?lat=" + templat + "&lng=" + tempLng +"&tTemporal="+tTemporal;
+                turl=urlData;
+            var key='tmin_view_netcdf_monthly';
+            gSessionKey=key;
+            }
+              else if(tTemporal==='daily'){
+                
+                var urlData = "{% url 'tmin_view_netcdf_daily' %}?lat=" + templat + "&lng=" + tempLng +"&tTemporal="+tTemporal;
+                turl=urlData;
+            var key='tmin_view_netcdf_daily';
+            gSessionKey=key;
+              }
+         } 
+    var objectid = await fetchwmsdata(temp);
+    if(gregional==='district'){
+        if(tTemporal==='annual'){
+            if ((!objectid)) {
+                alert("Please select the shapefile. ");
+                return; // Exit the function if the object ID is not an integer
+            }
+            var urlData = "{% url 'tmin_view_csv_annual_district' %}?objectid=" + objectid +"&tTemporal="+tTemporal;
+        turl=urlData;
+            var key='tmin_view_csv_annual_district';
+            gSessionKey=key;
+        }else if(tTemporal==='monthly'){
+            if ((!objectid)) {
+                alert("Please select the shapefile. ");
+                return; // Exit the function if the object ID is not an integer
+            }
+            var urlData = "{% url 'tmin_view_csv_monthly_district' %}?objectid=" + objectid +"&tTemporal="+tTemporal;
+            turl=urlData;
+            var key='tmin_view_csv_monthly_district';
+            gSessionKey=key;
+        }else if(tTemporal==='daily'){
+            if ((!objectid)) {
+                alert("Please select the shapefile. ");
+                return; // Exit the function if the object ID is not an integer
+            }
+            var urlData = "{% url 'tmin_view_csv_daily_district' %}?objectid=" + objectid +"&tTemporal="+tTemporal;
+            turl=urlData;
+            var key='tmin_view_csv_daily_district';
+            gSessionKey=key;
+        }
+
+    }else if(gregional==='state'){
+        if(tTemporal==='annual'){
+            if ((!objectid)) {
+                alert("Please select the shapefile. ");
+                return; // Exit the function if the object ID is not an integer
+            }
+            var urlData = "{% url 'tmin_view_csv_annual_state' %}?objectid=" + objectid +"&tTemporal="+tTemporal;
+            turl=urlData;
+            var key='tmin_view_csv_annual_state';
+            gSessionKey=key;
+        }else if(tTemporal==='monthly'){
+            if ((!objectid)) {
+                alert("Please select the shapefile. ");
+                return; // Exit the function if the object ID is not an integer
+            }
+            var urlData = "{% url 'tmin_view_csv_monthly_state' %}?objectid=" + objectid +"&tTemporal="+tTemporal;
+            turl=urlData;
+            var key='tmin_view_csv_monthly_state';
+            gSessionKey=key;
+
+        }else if(tTemporal==='daily'){
+            if ((!objectid)) {
+                alert("Please select the shapefile. ");
+                return; // Exit the function if the object ID is not an integer
+            }
+            var urlData = "{% url 'tmin_view_csv_daily_state' %}?objectid=" + objectid +"&tTemporal="+tTemporal;
+            turl=urlData;
+            var key='tmin_view_csv_daily_state';
+            gSessionKey=key;
+
+        }
+
+    }else if(gregional==='basin'){
+        if(tTemporal==='annual'){
+            if ((!objectid)) {
+                alert("Please select the shapefile. ");
+                return; // Exit the function if the object ID is not an integer
+            }
+            var urlData = "{% url 'tmin_view_csv_annual_basin' %}?objectid=" + objectid +"&tTemporal="+tTemporal;
+            turl=urlData;
+            var key='tmin_view_csv_annual_basin';
+            gSessionKey=key;
+
+        }else if(tTemporal==='monthly'){
+            if ((!objectid)) {
+                alert("Please select the shapefile. ");
+                return; // Exit the function if the object ID is not an integer
+            }
+            var urlData = "{% url 'tmin_view_csv_monthly_basin' %}?objectid=" + objectid +"&tTemporal="+tTemporal;
+            turl=urlData;
+            var key='tmin_view_csv_monthly_basin';
+            gSessionKey=key;
+        }else if(tTemporal==='daily'){
+            if ((!objectid)) {
+                alert("Please select the shapefile. ");
+                return; // Exit the function if the object ID is not an integer
+            }
+            var urlData = "{% url 'tmin_view_csv_daily_basin' %}?objectid=" + objectid +"&tTemporal="+tTemporal;
+            turl=urlData;
+            var key='tmin_view_csv_daily_basin';
+            gSessionKey=key;
+
+        }
+
+    }
+
+    
+    fetchData(turl);
+    //getAddressFromLatLng(lat, lng);
+};
+
+// Attach event listeners to show timeline of data radio buttons
+document.querySelectorAll('input[name="temporal"]').forEach(function(radio) {
+    radio.addEventListener('change', function () {
+        var plotType = this.value;
+        gtemporal=plotType;
+        if (gLat && gLng) {
+            if (gtemporal === 'annual') {
+                if (gplotType === 'showPrecipitation') {
+                    getOut(gLat, gLng, gurl, gtemporal,gregional);
+                } else if (gplotType === 'Tmax') {
+                    getOutTmax(gLat, gLng, gurl, gtemporal,gregional);
+                } else if (gplotType === 'Tmin') {
+                    getOutTmin(gLat, gLng, gurl, gtemporal,gregional);
+                } 
+            }else if (gtemporal === 'daily') {
+                
+                if (gplotType === 'showPrecipitation') {
+                    console.log("reached here too")
+                    getOut(gLat, gLng, gurl, gtemporal,gregional);
+                    
+                }else if (gplotType === 'Tmax') {
+                    getOutTmax(gLat, gLng, gurl, gtemporal,gregional);
+                }else if (gplotType === 'Tmin') {
+                    console.log("temporal scale changed   ",gtemporal,gLat,gLng);
+                    getOutTmin(gLat, gLng, gurl, gtemporal,gregional);
+                } 
+            }else if (gtemporal === 'monthly') {
+                if (gplotType === 'showPrecipitation') {
+                    getOut(gLat, gLng, gurl, gtemporal,gregional);
+                }else if (gplotType === 'Tmax') {
+                    getOutTmax(gLat, gLng, gurl, gtemporal,gregional);
+                }else if (gplotType === 'Tmin') {
+                    getOutTmin(gLat, gLng, gurl, gtemporal,gregional);
+                } 
+            } 
+        }
+    });
+});
+
+
+function submitLatLng() {
+    var latitude = parseFloat(document.getElementById('latitude').value);
+    var longitude = parseFloat(document.getElementById('longitude').value);
+
+    if (!isNaN(latitude) && !isNaN(longitude)) {
+        gLat = latitude;
+        gLng = longitude;
+        // Update the map view to the new coordinates
+        map.setView([gLat, gLng], 4);
+        if (gplotType === 'showPrecipitation') {
+            getOut(gLat, gLng, gurl, gtemporal,gregional);
+        } else if (gplotType === 'Tmin') {
+            getOutTmin(gLat, gLng, gurl,gtemporal,gregional);
+        } else if (gplotType === 'Tmax') {
+            getOutTmax(gLat, gLng, gurl,gtemporal,gregional);
+        }
+    } else {
+        alert('Please enter valid latitude and longitude values.');
+    }
+}
+
+map.on('click', function (e) {
+    var latlng = e.latlng;
+    var lat=latlng.lat;
+    var lng=latlng.lng
+    var sideBySideElement = document.querySelector('.leaflet-sbs-range');
+
+    // Check if the click was on the slider
+    if (e.originalEvent.target === sideBySideElement) {
+        return; // Do nothing if the click was on the slider
+    }
+
+    gLat=lat;
+    gLng=lng;
+    console.log(lat,lng);
+
+    if(gregional==='district'){
+
+    var url = 'http://172.18.16.22:8080/geoserver/cis/wms' +
+                '?service=WMS&version=1.1.0&request=GetFeatureInfo' +
+                '&layers=cis:output' +
+                '&styles=' +
+                '&bbox=' + map.getBounds().toBBoxString() +
+                '&width=' + map.getSize().x +
+                '&height=' + map.getSize().y +
+                '&srs=EPSG:4326' +
+                '&info_format=text/plain' +
+                '&query_layers=cis:output' +
+                '&x=' + Math.floor(e.containerPoint.x) +
+                '&y=' + Math.floor(e.containerPoint.y);
+    
+    gurl=url;
+    }else if(gregional==='state'){
+        var url = 'http://172.18.16.22:8080/geoserver/cis/wms' +
+                '?service=WMS&version=1.1.0&request=GetFeatureInfo' +
+                '&layers=cis:India_State_Boundary' +
+                '&styles=' +
+                '&bbox=' + map.getBounds().toBBoxString() +
+                '&width=' + map.getSize().x +
+                '&height=' + map.getSize().y +
+                '&srs=EPSG:4326' +
+                '&info_format=text/plain' +
+                '&query_layers=cis:India_State_Boundary' +
+                '&x=' + Math.floor(e.containerPoint.x) +
+                '&y=' + Math.floor(e.containerPoint.y);
+    
+    gurl=url;
+    }else if(gregional==='basin'){
+        var url = 'http://172.18.16.22:8080/geoserver/cis/wms' +
+                '?service=WMS&version=1.1.0&request=GetFeatureInfo' +
+                '&layers=cis:India' +
+                '&styles=' +
+                '&bbox=' + map.getBounds().toBBoxString() +
+                '&width=' + map.getSize().x +
+                '&height=' + map.getSize().y +
+                '&srs=EPSG:4326' +
+                '&info_format=text/plain' +
+                '&query_layers=cis:India' +
+                '&x=' + Math.floor(e.containerPoint.x) +
+                '&y=' + Math.floor(e.containerPoint.y);
+    
+    gurl=url;
+    }
+        
+
+
+
+    // Zoom to the searched location and place a draggable marker
+    map.setView([gLat, gLng], 4);
+    // Add marker to the clicked location
+    /*
+    if (marker) {
+        map.removeLayer(marker); // Remove previous marker if it exists
+    }
+    marker = L.marker(latlng).addTo(map); // Add new marker
+    // Show marker
+    marker.setOpacity(1);*/
+
+    
+
+
+    if (gplotType === 'showPrecipitation') {
+        getOut(gLat, gLng, gurl, gtemporal,gregional);
+    } else if (gplotType === 'Tmin') {
+        getOutTmin(gLat, gLng, gurl,gtemporal,gregional);
+    } else if (gplotType === 'Tmax') {
+        getOutTmax(gLat, gLng, gurl,gtemporal,gregional);
+    }
+    
+
+
+   
+    
+
+});
+/*function getAddressFromLatLng(lat, lng) {
+    // Construct the API URL
+    var apiUrl = `https://nominatim.openstreetmap.org/reverse?format=geojson&lat=${lat}&lon=${lng}
+        `;
+
+    // Make a GET request
+    fetch(apiUrl)
+        .then(response => response.json())
+        .then(data => {
+        // Access the display_name property inside the first feature
+        var displayName = data.features[0].properties.display_name;
+        currentAddress=displayName;
+        console.log(currentAddress);
+        document.getElementById('address').innerHTML = currentAddress;
+        })
+        .catch(error => {
+            console.error("Error:", error);
+        });
+}*/
+
+
+
+    
+document.getElementById('download-btn').addEventListener('click', function() {
+    var key=gSessionKey;
+    var url="{% url 'download_csv' %}?key="+key; 
+    fetch(url)
+        .then(response => response.json())
+        .then(data => {
+            if (data.error) {
+                alert(data.error);
+            } else {
+                // Handle the CSV data, e.g., download it
+                downloadCSV(data.csv_hist_imd, 'csv_hist_imd.csv');
+                downloadCSV(data.csv_ssp245_ssp585_near, 'csv_ssp245_ssp585_near.csv');
+                downloadCSV(data.csv_ssp245_ssp585_mid, 'csv_ssp245_ssp585_mid.csv');
+                downloadCSV(data.csv_ssp245_ssp585_far, 'csv_ssp245_ssp585_far.csv');
+            }
+        })
+        .catch(error => console.error('Error:', error));
+});
+
+function downloadCSV(csvData, filename) {
+    let blob = new Blob([csvData], { type: 'text/csv' });
+    let url = window.URL.createObjectURL(blob);
+    let a = document.createElement('a');
+    a.setAttribute('hidden', '');
+    a.setAttribute('href', url);
+    a.setAttribute('download', filename);
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+}
+        </script>
+</body>
+</html>

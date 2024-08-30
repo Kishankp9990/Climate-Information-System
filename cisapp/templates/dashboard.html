@@ -1,0 +1,28 @@
+<html>
+{% load static  %}
+<head>
+	
+	<link href="https://cdn.pydata.org/bokeh/release/bokeh-3.4.0.min.css" rel="stylesheet" type="text/css">
+    <link href="https://cdn.pydata.org/bokeh/release/bokeh-widgets-3.4.0.min.css" rel="stylesheet" type="text/css">
+</head>
+<body>
+	
+	<div id="key" style="display: none;">{{ key }}</div>
+			{% comment %} <div class="col">
+			<div class="p-3 border bg-light">
+				{{ div| safe}}
+			</div>
+			</div> {% endcomment %}
+			<div class="col">
+				{{ div| safe}}
+			</div>
+</body>
+<script src="https://cdn.bokeh.org/bokeh/release/bokeh-3.4.0.min.js"></script>
+<script src="https://cdn.bokeh.org/bokeh/release/bokeh-widgets-3.4.0.min.js"></script>
+<script src="https://cdn.bokeh.org/bokeh/release/bokeh-tables-3.4.0.min.js"></script>
+<script src="https://cdn.bokeh.org/bokeh/release/bokeh-api-3.4.0.min.js"></script>
+{{script| safe}}
+
+
+
+</html>

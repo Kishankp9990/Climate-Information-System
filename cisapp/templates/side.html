@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+{% load static  %}
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Climate-Dashboard-Workflow</title>
+    <style>
+        <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+    </style>
+</head>
+<body>
+<div id="map"></div>
+</body>
+ <script src='https://unpkg.com/leaflet@1.9.4/dist/leaflet.js'></script>
+ <script src="{% static "side/leaflet-side-by-side.js" %}"></script>
+<script> 
+    // your_script.js
+// et up the map
+var map = L.map('map').setView([22, 84], 5);
+// Set the marker
+// Add OpenStreetMap as the base layer
+var osmLayer = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    attribution: '© OpenStreetMap contributors'
+}).addTo(map);
+// Add your GeoServer WMS layer 
+var nexrad = L.tileLayer.wms("http://172.18.16.22:8080/geoserver/wms", {
+    layers: 'cis:output',
+    format: 'image/png',
+    transparent: true,
+    attribution: "testing wms district"
+    });
+var stamenLayer = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+    });
+sbslayer=L.control.sideBySide(osmLayer, stamenLayer);
+</script>

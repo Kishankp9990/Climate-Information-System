@@ -57,8 +57,8 @@ L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
 
 
 
-var wmsLayer=L.tileLayer.wms('http://localhost:8080/geoserver/learning/wms', {
-    layers: 'learning:APCP_sfc',
+var wmsLayer=L.tileLayer.wms('http://172.18.16.22:8080/geoserver/cis/wms', {
+    layers: 'cis:APCP_sfc',
     format: 'image/png',
     transparent: true,
     time: '1979-7-01'
@@ -87,16 +87,16 @@ selectTime.addTo(map);
   // Add a click event to retrieve altitude information
 map.on('click', function (e) {
     var latlng = e.latlng;
-    var url = 'http://localhost:8080/geoserver/learning/wms' +
+    var url = 'http://172.18.16.22:8080/geoserver/cis/wms' +
         '?service=WMS&version=1.1.0&request=GetFeatureInfo' +
-        '&layers=learning:APCP_sfc' +
+        '&layers=cis:APCP_sfc' +
         '&styles=' +
         '&bbox=' + map.getBounds().toBBoxString() +
         '&width=' + map.getSize().x +
         '&height=' + map.getSize().y +
         '&srs=EPSG:4326' +
         '&info_format=text/plain' +
-        '&query_layers=learning:APCP_sfc' +
+        '&query_layers=cis:APCP_sfc' +
         '&x=' + e.containerPoint.x +
         '&y=' + e.containerPoint.y;
 

@@ -1,0 +1,14 @@
+'/home/kishan/datahub/climate/GCM_DS1/EM_imd/historical/pr_1979_2014.nc'
+'/home/kishan/datahub/meteorology/IMD/pr_interpolated_125.nc'
+'/home/kishan/datahub/climate/GCM_DS1/EM/ssp245_pr/pr_2015_2100.nc'
+'/home/kishan/datahub/climate/GCM_DS1/EM/ssp545_pr/pr_2015_2100.nc'
+
+'/home/kishan/datahub/climate/GCM_DS1/EM/historical/tasmax_1979_2014.nc'
+ne'/home/kishan/datahub/meteorology/IMDAA/tasmax.nc'
+'/home/kishan/datahub/climate/GCM_DS1/EM/ssp245/tasmax_2015_2100.nc'
+'/home/kishan/datahub/climate/GCM_DS1/EM/ssp585/tasmax_2015_2100.nc'
+
+'/home/kishan/datahub/climate/GCM_DS/EM/historical/tasmin_1979_2014.nc'
+ne'/home/kishan/datahub/meteorology/IMDAA/tasmin.nc'
+'/home/kishan/datahub/climate/GCM_DS/EM/ssp245/tasmin_2015_2100.nc'
+'/home/kishan/datahub/climate/GCM_DS/EM/ssp585/tasmin_2015_2100.nc'

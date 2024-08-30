@@ -1,0 +1,285 @@
+{% extends 'basic.html' %}
+{%block title%}basin{% endblock %}
+{%block css%}#map{
+    height: 400px; 
+    width:500px;
+    margin-left:10px;}
+    
+    {%endblock%}
+{%block body%}
+
+<div id="address"></div>
+<!-- Add radio buttons to select plot type -->
+<div>
+    <input type="radio" id="showPrecipitation" name="plotType" value="showPrecipitation" checked>
+    <label for="showPrecipitation">Precipitation</label>
+    <input type="radio" id="showwindspeed" name="plotType" value="showwindspeed">
+    <label for="showwindspeed">Wind Speed</label>
+    <input type="radio" id="showtemp" name="plotType" value="showtemp">
+    <label for="showtemp">Temperature</label>
+</div>
+<div id="map"></div>
+
+<div id="plot">Plot will load here</div>
+
+{%endblock%}
+{%block script%}
+ <!-- Make sure you put this AFTER Leaflet's CSS -->
+ <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+ integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo="
+ crossorigin=""></script>
+<script type="text/javascript" src="https://cdn.jsdelivr.net/npm/leaflet-timedimension@1.1.1/dist/leaflet.timedimension.min.js"></script>
+<script src="https://cdn.bokeh.org/bokeh/release/bokeh-3.4.0.min.js"></script>
+<script src="https://cdn.bokeh.org/bokeh/release/bokeh-widgets-3.4.0.min.js"></script>
+<script src="https://cdn.bokeh.org/bokeh/release/bokeh-tables-3.4.0.min.js"></script>
+<script src="https://cdn.bokeh.org/bokeh/release/bokeh-api-3.4.0.min.js"></script>
+<script> 
+    // your_script.js
+
+// Set up the map
+var map = L.map('map').setView([22, 84], 4);
+// Set the marker
+
+
+// Add OpenStreetMap as the base layer
+L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    attribution: '© OpenStreetMap contributors'
+}).addTo(map);
+
+
+var f_c= '#FFFF00';
+var a=`<?xml version="1.0" encoding="UTF-8"?>
+<StyledLayerDescriptor xmlns="http://www.opengis.net/sld" xsi:schemaLocation="http://www.opengis.net/sld http://schemas.opengis.net/sld/1.1.0/StyledLayerDescriptor.xsd" xmlns:xlink="http://www.w3.org/1999/xlink" xmlns:se="http://www.opengis.net/se" xmlns:ogc="http://www.opengis.net/ogc" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" version="1.1.0">
+  <NamedLayer>
+    <se:Name>output</se:Name>
+    <UserStyle>
+      <se:Name>output</se:Name>
+      <se:FeatureTypeStyle>`;
+var b=`
+<se:Rule>
+  <se:PolygonSymbolizer>
+    <se:Fill>
+      <se:SvgParameter name="fill">#FF0000</se:SvgParameter> <!-- Red -->
+      <se:SvgParameter name="fill-opacity">0.1</se:SvgParameter> <!-- 50% transparency -->
+    </se:Fill>
+    <se:Stroke>
+      <se:SvgParameter name="stroke">#0000FF</se:SvgParameter> <!-- Blue -->
+      <se:SvgParameter name="stroke-width">0.5</se:SvgParameter>
+      <se:SvgParameter name="stroke-linejoin">bevel</se:SvgParameter>
+    </se:Stroke>
+  </se:PolygonSymbolizer>
+</se:Rule>`;
+var c=`</se:FeatureTypeStyle>
+</UserStyle>
+</NamedLayer>
+</StyledLayerDescriptor>`;
+var default_style=a+b+c;
+
+// Add your GeoServer WMS layer
+var nexrad = L.tileLayer.wms('http://172.18.16.22:8080/geoserver/cis/wms', {
+    layers: 'cis:output',
+    format: 'image/png',
+    sld_body:default_style,
+    transparent: true,
+    attribution: "testing wms district"
+    });
+    nexrad.addTo(map);
+
+var globalLat;
+var globalLng;
+var currentPlotType="showPrecipitation";
+var currentAddress="";
+var globalurl;
+var globalstyle=default_style;
+
+console.log(globalLat,globalLng);
+
+
+
+
+
+map.on('click', function (e) {
+    var latlng = e.latlng;
+    var lat=latlng.lat;
+    var lng=latlng.lng
+    globalLat=lat;
+    globalLng=lng;
+    console.log(lat,lng);
+
+    var url = 'http://172.18.16.22:8080/geoserver/cis/wms' +
+                '?service=WMS&version=1.1.0&request=GetFeatureInfo' +
+                '&layers=cis:output' +
+                '&styles=' +
+                '&bbox=' + map.getBounds().toBBoxString() +
+                '&width=' + map.getSize().x +
+                '&height=' + map.getSize().y +
+                '&srs=EPSG:4326' +
+                '&info_format=text/plain' +
+                '&query_layers=cis:output' +
+                '&x=' + e.containerPoint.x +
+                '&y=' + e.containerPoint.y;
+    
+    globalurl=url;
+
+
+
+    // Zoom to the searched location and place a draggable marker
+    map.setView([lat, lng], 10);
+    // Add marker to the clicked location
+    if (marker) {
+        map.removeLayer(marker); // Remove previous marker if it exists
+    }
+    marker = L.marker(latlng).addTo(map); // Add new marker
+    // Show marker
+    marker.setOpacity(1);
+
+    
+
+
+    if (currentPlotType === 'showPrecipitation') {
+        getOut(globalLat, globalLng, globalurl);
+    } else if (currentPlotType === 'showwindspeed') {
+        getOutw(globalLat, globalLng, globalurl);
+    } else if (currentPlotType === 'showtemp') {
+        getOutT(globalLat, globalLng, globalurl);
+    }
+    
+
+
+   
+    
+
+});
+
+
+
+
+// Attach event listeners to radio buttons
+document.querySelectorAll('input[name="plotType"]').forEach(function(radio) {
+    radio.addEventListener('change', function () {
+        var plotType = this.value;
+        currentPlotType=plotType;
+        
+        if (globalLat && globalLng) {
+            if (plotType === 'showPrecipitation') {
+                getOut(globalLat, globalLng, globalurl);
+            } else if (plotType === 'showwindspeed') {
+                getOutw(globalLat, globalLng, globalurl);
+            } else if (plotType === 'showtemp') {
+                getOutT(globalLat, globalLng, globalurl);
+            }
+        } else {
+            document.getElementById('address').innerHTML = 'Select the location first';
+        }
+    });
+});
+
+
+// Function to fetch data for Precipitation
+async function getOut(lat, lng, globalurl) {
+    var temp = globalurl;
+    var objectid = await fetchwmsdata(temp);
+    console.log(objectid);
+    var urlData = "{% url 'sfppt' %}?lat=" + lat + "&lng=" + lng + "&objectid=" + objectid;
+    fetchData(urlData);
+    //getAddressFromLatLng(lat, lng);
+};
+
+// Function to fetch data for Wind Speed
+async function getOutw(lat, lng, globalurl) {
+    var temp = globalurl;
+    var objectid = await fetchwmsdata(temp);
+    console.log(objectid);
+    var urlData = "{% url 'sfws' %}?lat=" + lat + "&lng=" + lng + "&objectid=" + objectid;
+    fetchData(urlData);
+    //getAddressFromLatLng(lat, lng);
+};
+
+// Function to fetch data for Temperature
+async function getOutT(lat, lng, globalurl) {
+    var temp = globalurl;
+    var objectid = await fetchwmsdata(temp);
+    console.log(objectid);
+    var urlData = "{% url 'sftemp' %}?lat=" + lat + "&lng=" + lng + "&objectid=" + objectid;
+    fetchData(urlData);
+    //getAddressFromLatLng(lat, lng);
+};
+
+
+
+// Function to fetch data using Fetch API
+async function fetchwmsdata(temp) {
+    // Make a GetFeatureInfo request to GeoServer
+    var uRl = temp;
+    try {
+        const response = await fetch(uRl);
+        const data = await response.text();
+
+        // Parse the response data
+        var lines = data.trim().split('\n');
+        var featureInfo = {};
+        lines.forEach(line => {
+            var parts = line.split('=');
+            if (parts.length === 2) {
+                var key = parts[0].trim();
+                var value = parts[1].trim();
+                featureInfo[key] = value;
+            }
+        });
+
+        // Store individual pieces of data
+        var objectid = featureInfo['objectid'];
+        var distname = featureInfo['distname'];
+        document.getElementById('address').innerHTML = distname;
+        return objectid;
+    } catch (error) {
+        console.error("Error:", error);
+        return null; // Return null in case of error
+    }
+};
+
+    // Function to fetch data using Fetch API
+function fetchData(urlData) {
+    fetch(urlData)
+        .then(response => response.text())
+        .then(html => {
+            document.getElementById('plot').innerHTML = html;
+            
+            // Find and execute the script within the inserted HTML
+            const scripts = document.getElementById('plot').getElementsByTagName('script');
+            for (let i = 0; i < scripts.length; i++) {
+                const script = document.createElement('script');
+                script.textContent = scripts[i].textContent;
+                document.body.appendChild(script);
+            }
+        })
+        .catch(error => {
+            console.error("Error:", error);
+        });
+};
+console.log(currentAddress);
+
+
+
+/*function getAddressFromLatLng(lat, lng) {
+    // Construct the API URL
+    var apiUrl = `https://nominatim.openstreetmap.org/reverse?format=geojson&lat=${lat}&lon=${lng}
+        `;
+
+    // Make a GET request
+    fetch(apiUrl)
+        .then(response => response.json())
+        .then(data => {
+        // Access the display_name property inside the first feature
+        var displayName = data.features[0].properties.display_name;
+        currentAddress=displayName;
+        console.log(currentAddress);
+        document.getElementById('address').innerHTML = currentAddress;
+        })
+        .catch(error => {
+            console.error("Error:", error);
+        });
+}*/
+
+</script>
+{%endblock%}

@@ -1,0 +1,84 @@
+{% extends 'basic.html' %}
+{% load static %}
+{% block title %}Log In{% endblock %}
+{% block css %}
+<!-- Add any additional CSS here -->
+{% endblock %}
+{% block body %}
+
+<!-- ====================================
+Start Login form
+==================================== -->
+<section id="Apps" class="section">
+    <div class="container">
+        <div class="row">
+            <div class="col-lg-12">
+                <!-- section title -->
+                <div class="title text-center wow fadeInDown">
+                    <h2>Log <span class="color">In</span></h2>
+                    <div class="border"></div>
+                </div>
+                <!-- /section title -->
+            </div>
+            <!-- <div id="login"> -->
+            <div class="contact-form col-lg-12 mt-4 mt-lg-0 wow fadeInUp" data-wow-duration="500ms" data-wow-delay="300ms">
+                <form id="contact-form" method="post" action="{% url 'login' %}" role="form">
+                    {% csrf_token %}
+                    <div class="form-group">
+                        <i class="fa fa-envelope"></i>
+                        <label for="id_email">Email:</label>
+                        {{ form.email }}
+                    </div>
+                    <div class="form-group">
+                        <i class="fa fa-lock"></i>
+                        <label for="id_password">Password:</label>
+                        {{ form.password }}
+                    </div>
+                    <div><a href="#">Forgot password?</a></div>
+                    <div id="cf-submit">
+                        <input type="submit" id="contact-submit" class="btn btn-transparent" value="Submit">
+                    </div>
+                    <div>Don't have an account?<a href="{% url 'signup' %}"> Signup</a></div>
+                </form>
+                <a href="{% url 'social:begin' 'google-oauth2' %}" class="btn btn-primary">Login with Google</a>
+            </div>
+            <!-- </div> -->
+            <div class="contact-form col-lg-12 mt-4 mt-lg-0 wow fadeInUp " data-wow-duration="500ms" data-wow-delay="300ms">
+              
+            </div>
+                {% for message in messages %}
+                <p>{{ message }}</p>
+                {% endfor %}
+            </div>
+            <!-- </div> -->
+        </div>
+    </div>
+</section>
+<!-- ====================================
+End Login form
+==================================== -->
+
+{% endblock %}
+{% block script %}
+<!-- Add any additional JavaScript here -->
+{% endblock %}
+
+{% comment %} <!-- login.html -->
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Login</title>
+</head>
+<body>
+    <h2>Login</h2>
+    <form method="post">
+        {% csrf_token %}
+        {{ form.as_p }}
+        <button type="submit">Login</button>
+    </form>
+    <div>Don't have an account?<a href="{% url 'signup' %}"> Signup</a> </div>
+    {% for message in messages %}
+    <p>{{ message }}</p>
+    {% endfor %}
+</body>
+</html> {% endcomment %}

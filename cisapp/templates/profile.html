@@ -1,0 +1,16 @@
+{% extends 'basic.html' %}
+{% load static %}
+{% block title %}Log In{% endblock %}
+{% block css %}
+{% endblock %}
+{% block body %}
+<h2>Login</h2>
+    <p>Welcome, {{ user.username }}!</p>
+    <a href="{% url 'logout' %}">Logout</a>
+{% endblock %}
+{% block script %}
+
+{% endblock %}
+
+
+

@@ -1,0 +1,12 @@
+Django==3.2.12
+mysqlclient
+django-cors-headers==4.3.1
+bokeh==3.4.0
+djangorestframework==3.15.1
+netCDF4==1.6.5
+pandas
+xarray
+social-auth-app-django
+# Werkzeug
+# pyOpenSSL
+# django-extensions

@@ -4,9 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>leaflet tutorial</title>
-    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
-    integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY="
-    crossorigin=""/>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
     <style>
         #map{
         height: 700px; 
@@ -23,10 +21,7 @@
 </body>
 </html>
  <!-- Make sure you put this AFTER Leaflet's CSS -->
- <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
-     integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo="
-     crossorigin=""></script>
-<script type="text/javascript" src="https://cdn.jsdelivr.net/npm/leaflet-timedimension@1.1.1/dist/leaflet.timedimension.min.js"></script>   
+ <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
 <script> 
     // your_script.js
 
@@ -40,9 +35,9 @@ L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
 
 var f_c= '#FFFF00';
 var a=`<?xml version="1.0" encoding="UTF-8"?>
-<StyledLayerDescriptor xmlns="http://www.opengis.net/sld" xmlns:xlink="http://www.w3.org/1999/xlink" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.opengis.net/sld http://schemas.opengis.net/sld/1.1.0/StyledLayerDescriptor.xsd" xmlns:ogc="http://www.opengis.net/ogc" version="1.1.0" xmlns:se="http://www.opengis.net/se">
+<StyledLayerDescriptor xmlns="http://www.opengis.net/sld" xsi:schemaLocation="http://www.opengis.net/sld http://schemas.opengis.net/sld/1.1.0/StyledLayerDescriptor.xsd" xmlns:xlink="http://www.w3.org/1999/xlink" xmlns:se="http://www.opengis.net/se" xmlns:ogc="http://www.opengis.net/ogc" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" version="1.1.0">
   <NamedLayer>
-    <se:Name>learning:output</se:Name>
+    <se:Name>output</se:Name>
     <UserStyle>
       <se:Name>output</se:Name>
       <se:FeatureTypeStyle>`;
@@ -123,11 +118,14 @@ var c=`</se:FeatureTypeStyle>
 </NamedLayer>
 </StyledLayerDescriptor>`;
 
+
+
+
 var all=a+b+c;
 
 // Add your GeoServer WMS layer
-var nexrad = L.tileLayer.wms("http://localhost:8080/geoserver/wms", {
-  layers: 'learning:output',
+var nexrad = L.tileLayer.wms('http://172.18.16.22:8080/geoserver/cis/wms', {
+  layers: 'cis:output',
   format: 'image/png',
   sld_body:all,
   transparent: true,
@@ -138,24 +136,24 @@ var nexrad = L.tileLayer.wms("http://localhost:8080/geoserver/wms", {
 // Add a click event to retrieve altitude information
 map.on('click', function (e) {
     var latlng = e.latlng;
-    var url = 'http://localhost:8080/geoserver/learning/wms' +
+    var url = 'http://172.18.16.22:8080/geoserver/cis/wms' +
         '?service=WMS&version=1.1.0&request=GetFeatureInfo' +
-        '&layers=learning:output' +
+        '&layers=cis:output' +
         '&styles=' +
         '&bbox=' + map.getBounds().toBBoxString() +
         '&width=' + map.getSize().x +
         '&height=' + map.getSize().y +
         '&srs=EPSG:4326' +
         '&info_format=text/plain' +
-        '&query_layers=learning:output' +
-        '&x=' + e.containerPoint.x +
-        '&y=' + e.containerPoint.y;
-
+        '&query_layers=cis:output' +
+        '&x=' + Math.floor(e.containerPoint.x) +
+        '&y=' + Math.floor(e.containerPoint.y);
     /// Make a GetFeatureInfo request to GeoServer
     fetch(url)
     .then(response => response.text())
     .then(data => {
         // Parse the response data
+        console.log(data);
         var lines = data.trim().split('\n');
         var featureInfo = {};
         lines.forEach(line => {

@@ -26,7 +26,8 @@ SECRET_KEY = "django-insecure-ef-h04cw70$#vab9(h0glo9u#-p2qgnq#3bkwrs+4ybsg$_hwb
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = True
 
-ALLOWED_HOSTS = []
+ALLOWED_HOSTS = ['172.18.16.22','0.0.0.0','127.0.0.1' ]
+
 
 
 # Application definition
@@ -43,7 +44,10 @@ INSTALLED_APPS = [
     "cisapp",
     "app1",
     "app2",
-    "app3"
+    "app3",
+    "rest_framework",
+    'social_django',
+    # "django_extensions"
 ]
 
 MIDDLEWARE = [
@@ -55,11 +59,25 @@ MIDDLEWARE = [
     "django.contrib.auth.middleware.AuthenticationMiddleware",
     "django.contrib.messages.middleware.MessageMiddleware",
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
+    'social_django.middleware.SocialAuthExceptionMiddleware',
 ]
 
 CORS_ALLOW_ALL_ORIGINS: True
 
 ROOT_URLCONF = "CIS.urls"
+
+AUTHENTICATION_BACKENDS = (
+    'social_core.backends.google.GoogleOAuth2',
+    'django.contrib.auth.backends.ModelBackend',
+)
+
+SOCIAL_AUTH_GOOGLE_OAUTH2_KEY = '<your-client-id>'
+SOCIAL_AUTH_GOOGLE_OAUTH2_SECRET = '<your-client-secret>'
+
+LOGIN_URL = 'login'
+LOGOUT_URL = 'logout'
+LOGIN_REDIRECT_URL = 'profile'
+LOGOUT_REDIRECT_URL = 'login'
 
 TEMPLATES = [
     {
@@ -72,13 +90,16 @@ TEMPLATES = [
                 "django.template.context_processors.request",
                 "django.contrib.auth.context_processors.auth",
                 "django.contrib.messages.context_processors.messages",
+                'social_django.context_processors.backends',
+                'social_django.context_processors.login_redirect',
             ],
         },
     },
 ]
 
 WSGI_APPLICATION = "CIS.wsgi.application"
-
+# Add social-auth-app-django configuration
+SOCIAL_AUTH_URL_NAMESPACE = 'social'
 
 # Database
 # https://docs.djangoproject.com/en/4.2/ref/settings/#databases
@@ -87,12 +108,23 @@ DATABASES = {
     "default": {
         "ENGINE": "django.db.backends.mysql",
         "NAME": "db_test",
-        "HOST":"localhost",
+        "HOST":"172.18.16.22",
         "PORT":"3306",
-        "USER":"kishan",
-        "PASSWORD":"admin",
+        "USER":"root",
+        "PASSWORD":"kishan123",
     }
 }
+
+# DATABASES = {
+#     "default": {
+#         "ENGINE": "django.db.backends.mysql",
+#         "NAME": "db_test",
+#         "HOST":"some-mysql",
+#         "PORT":"3306",
+#         "USER":"root",
+#         "PASSWORD":"my-secret-pw",
+#     }
+# }
 
 
 # Password validation

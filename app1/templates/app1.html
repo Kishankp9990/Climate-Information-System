@@ -11,7 +11,7 @@
     <input type="submit" value="Submit">
     
 </form>
-
+hello1
 <div id="map"></div>{%endblock%}
 {%block script%}
  <!-- Make sure you put this AFTER Leaflet's CSS -->
@@ -19,11 +19,12 @@
  integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo="
  crossorigin=""></script>
 <script type="text/javascript" src="https://cdn.jsdelivr.net/npm/leaflet-timedimension@1.1.1/dist/leaflet.timedimension.min.js"></script>  
+	
 <script> 
     // your_script.js
 
 // Set up the map
-var map = L.map('map').setView([0, 0], 2);
+var map = L.map('map').setView([22, 84], 5);
 
 // Add OpenStreetMap as the base layer
 L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
@@ -98,4 +99,5 @@ function getOut(lat, lng){
 };
 
 </script>
+
 {%endblock%}

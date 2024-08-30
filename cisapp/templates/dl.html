@@ -1,0 +1,120 @@
+{% extends 'basic.html' %}
+{%block title%}Delineation_app{% endblock %}
+{%block css%}
+#mapid {
+    height: 600px;
+    width: 80%;
+    margin: 20px auto;
+    border: 2px solid #ccc;
+    border-radius: 8px;
+}
+#control-panel {
+    margin: 20px;
+}
+#delineateButton, #clearButton {
+    background-color: #007bff;
+    color: white;
+    padding: 10px 20px;
+    border: none;
+    border-radius: 5px;
+    font-size: 16px;
+    cursor: pointer;
+    margin: 5px;
+}
+#clearButton {
+    background-color: #dc3545;
+}
+#delineateButton:hover {
+    background-color: #0056b3;
+}
+#clearButton:hover {
+    background-color: #c82333;
+}
+h1 {
+    color: #333;
+}{%endblock%}
+{%block body%}
+<h1>Watershed Delineation Tool</h1>
+<div id="control-panel">
+    <button id="delineateButton">Delineate Watershed</button>
+    <button id="clearButton">Clear Map</button>
+</div>
+<div id="mapid"></div>
+{%endblock%}
+{%block script%}
+<!-- Make sure you put this AFTER Leaflet's CSS -->
+
+
+<script>
+    var map = L.map('mapid').setView([22, 84], 5); // Center on Iceland
+
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+    }).addTo(map);
+
+    var marker;
+    var lastClickedLatLng;
+    var drawnItems = L.featureGroup().addTo(map);
+
+    map.on('click', function(e) {
+        lastClickedLatLng = e.latlng;
+        if (marker) {
+            map.removeLayer(marker);
+        }
+        marker = L.marker(e.latlng).addTo(map);
+    });
+
+    document.getElementById('delineateButton').addEventListener('click', function() {
+        if (!lastClickedLatLng) {
+            alert("Please click on the map to select a location.");
+            return;
+        }
+            var url= 'http://172.18.16.22:5000/delineate'
+        fetch(url, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({coordinates: {lat: lastClickedLatLng.lat, lon: lastClickedLatLng.lng}})
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.status === 'success') {
+                // Clear previous layers
+                drawnItems.clearLayers();
+
+                // Add new layers
+                data.data.forEach(item => {
+                    if (item.basin) {
+                        L.geoJSON(JSON.parse(item.basin), {
+                            style: {
+                                color: 'red',
+                                weight: 2,
+                                fillOpacity: 0.2
+                            }
+                        }).addTo(drawnItems);
+                    }
+                    if (item.river) {
+                        L.geoJSON(JSON.parse(item.river), {
+                            style: {
+                                color: '#00008B',  // Dark blue color
+                                weight: 2
+                            }
+                        }).addTo(drawnItems);
+                    }
+                });
+            } else {
+                alert(data.message);
+            }
+        })
+        .catch(error => console.error('Error:', error));
+    });
+
+    document.getElementById('clearButton').addEventListener('click', function() {
+        drawnItems.clearLayers();
+        if (marker) {
+            map.removeLayer(marker);
+        }
+    });
+</script>
+{%endblock%}

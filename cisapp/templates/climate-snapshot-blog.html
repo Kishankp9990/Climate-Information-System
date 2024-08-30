@@ -1,0 +1,40 @@
+{% extends 'basic.html' %}
+{% load static  %}
+{%block title%}Apps{% endblock %}
+{%block css%}
+{%endblock%}
+{%block body%}
+<section class="section">
+	<div class="container">
+	  <div class="row">
+		<div class="col-lg-12 text-center">
+		  <h1>Climate Impact Snapshot App</h1>
+		  <ul class="list-inline mb-50">
+			<!-- <li class="list-inline-item">Thomas Jonson</li> -->
+			<!-- <li class="list-inline-item">January 8, 2021</li> -->
+		  </ul>
+		  <img class="img-fluid mb-50" src="{% static 'img/Apps/Apps-3.jpg' %}" alt="blog-image">
+		</div>
+		<div class="col-lg-12">
+			<p class="text-white">Climate change impacts vary significantly throughout India, reflecting the
+				country's diverse climate, topography, and ecology. This app is a great starting point if you
+				want to get a quick overview of climate impacts in your region. The Incline Climate Impact
+				Snapshot App provides climate projections for temperature and precipitation. The Incline Climate
+				Impact Snapshot App is designed to be straightforward and accessible for most users.</p>
+		
+	   
+		  {% comment %} <p class="mb-50">App.App.App. App.App.App.App. App.App.App.App.App. App.App.App.App. App.  App.App.App.App.</p>
+		  <blockquote class="p-3 mb-50">Design is not just what it looks like and feels like. Design is how it works.
+		  </blockquote>
+		  <p class="mb-50">App.App.App. App.App.App.App. App.App.App.App.App. App.App.App.App. App.  App.App.App.App.</p>
+		  <div class="text-center">
+			<img class="img-fluid mb-50" src="{% static 'img/Apps/Apps-2.jpg' %}"alt="image">
+		  </div>
+		  <p>App.App.App. App.App.App.App. App.App.App.App.App. App.App.App.App. App.  App.App.App.App.</p> {% endcomment %}
+		</div>
+		<a class=" btn btn-transparent" href="side-by-side">Explore</a>
+	  </div>
+	</div>
+  </section>
+{%endblock%}
+{%block script%}{%endblock%}

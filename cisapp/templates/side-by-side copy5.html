@@ -1,0 +1,1971 @@
+{% extends 'basic.html' %}
+{% load static  %}
+{%block title%}INCLINE{% endblock %}
+{%block css%}	
+<link href="https://cdn.jsdelivr.net/npm/bootstrap-icons/font/bootstrap-icons.css" rel="stylesheet">
+<!-- Leaflet CSS -->
+<link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css" />
+<!-- Optional: Leaflet markercluster plugin -->
+<link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster/dist/MarkerCluster.css" />
+<link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster/dist/MarkerCluster.Default.css" />
+<!-- Bokeh CDN resources -->
+<link href=”http://cdn.pydata.org/bokeh/release/bokeh-3.4.0.min.css" rel=”stylesheet” type=”text/css”>
+<link href=”http://cdn.pydata.org/bokeh/release/bokeh-widgets-3.4.0.min.css" rel=”stylesheet” type=”text/css”>
+    
+    <style>
+        body, html {
+            margin: 0;
+            overflow:hidden;
+            height: 100%;
+            display:flex !important;
+            flex-direction:column !important; 
+            font-family: Arial, sans-serif;
+        }
+        #map-container {
+        
+            height: 100vh;
+            display: flex;
+            flex-direction:column;
+            
+            
+        }
+        #sidebar {
+
+            width: 16vw;
+            background-color: #f0f0f0;
+            padding: 20px;
+            overflow-y: auto;
+            flex-shrink: 0;
+            z-index:1001;
+        }
+        #map-wrapper {
+            flex-grow:1;
+            display: flex;
+            flex-direction: column;
+            flex-shrink: 1;
+            /*transition:margin-left 0.3s;*/
+            width:82vw;
+        }
+        #map {
+            
+            width:100%;
+            /*transition:height 0.3s, width 0.3s;*/
+            height:100%;
+        }
+        #mplot {
+            width:100%;
+            height:0%;
+            /*transition:height 0.3s, width 0.3s; */
+            background-color: #fff;
+            overflow-y: scroll; 
+            border: 1px solid  #ddd;
+            /*white-space: no-wrap;
+            object-fit:scale-down; */
+            /*overflow: hidden;*/ /*uncomment this to remove scrollbar in plots caused by default setting of browser*/
+        }
+        #divider {
+            width: 100%;
+            cursor: row-resize;
+            height: 10px;
+            background-color: #000;
+            position: relative; /* Adjust positioning context */
+            z-index: 999;
+        }
+        .toggle-menu {
+            border: 2px solid #ccc; /* Add a 2px border around the toggle menu icon */
+            border-radius: 5px;
+            width: 50px;
+            height: 50px;
+            display: block;
+            position: fixed;
+            top: 80px;
+            float: left;
+            z-index: 1002;
+            background-color: #f0f0f0;
+            
+          }
+          
+          .toggle-menu i {
+            position: absolute;
+            display: block;
+            height: 2px;
+            background: #0094FC;
+            width: 30px;
+            left: 10px;
+            -webkit-transition: all .3s;
+            transition: all .3s;
+          }
+          
+          .toggle-menu i:nth-child(1) {
+            top: 16px;
+          }
+          
+          .toggle-menu i:nth-child(2) {
+            top: 24px;
+          }
+          
+          .toggle-menu i:nth-child(3) {
+            top: 32px;
+          }
+          
+          .toggle-menu.active i:nth-child(1) {
+            top: 25px;
+            -webkit-transform: rotateZ(45deg);
+            transform: rotateZ(45deg);
+          }
+          
+          .toggle-menu.active i:nth-child(2) {
+            background: transparent;
+          }
+          
+          .toggle-menu.active i:nth-child(3) {
+            top: 25px;
+            -webkit-transform: rotateZ(-45deg);
+            transform: rotateZ(-45deg);
+          }
+          
+          
+          
+          .menu-drawer {
+            width: 320px;
+            background-color:#f0f0f0;
+            height: 66.5%;
+            position: absolute;
+            left: -550px;
+            top: 0;
+            transition: left linear 0.2s;
+            padding: 20px;
+            z-index:1000;
+            border:solid black 2px;
+          }
+          
+          .open {
+            left: 0px;
+            transition: left linear 0.2s;
+          }
+          
+           /*.menu-drawer {
+             li {
+               font-family: lato;
+               font-weight: bold;
+               margin-bottom: 30px;
+               font-size: 50px;
+               text-align: center;
+               a {
+                 text-decoration: none;
+                 color: #555;
+                 &:hover {
+                   color: #0094FC;
+                 }
+               }
+             }
+           } */
+        .control-group {
+            margin-bottom: 15px;
+        }
+        .control-group label {
+            margin-right: 10px;
+        }
+        #latlng-inputs {
+            margin-top: 10px;
+        }
+        #latlng-inputs input {
+            width: 80px;
+            margin-right: 10px;
+        }
+        #download-btn {
+            display: block;
+            width: 100%;
+            padding: 10px;
+            background-color: #808080;
+            color: white;
+            border: none;
+            cursor: pointer;
+            margin-top: 15px;
+        }
+
+        @media (max-width: 768px) {
+            .menu-drawer{
+                width:100%;
+                max-width:100%;
+            }
+            .toggle-menu{
+                top:10px;
+                left:10px;
+            }
+            #sidebar{
+                padding:10px;
+            }
+        }
+        @media (max-width: 480px) {
+            #map, #mplot{
+                height:50vh;
+            }
+            #divider{
+                height:5px;
+            }
+            
+        }
+
+        
+
+        .toggle-switch-container {
+            position: relative;
+            margin-top:100px;
+            width: 200px;
+            -webkit-user-select: none;
+            -moz-user-select: none;
+            -ms-user-select: none;
+        }
+        .toggle-switch-checkbox {
+            display: none;
+        }
+        .toggle-switch-label {
+            display: block;
+            overflow: hidden;
+            cursor: pointer;
+            border: 2px solid #999999;
+            border-radius: 20px;
+        }
+        .toggle-switch-inner {
+            display: block;
+            width: 200%;
+            margin-left: -100%;
+            transition: margin 0.3s ease-in 0s;
+        }
+        .toggle-switch-inner:before, .toggle-switch-inner:after {
+            display: block;
+            float: left;
+            width: 50%;
+            height: 30px;
+            padding: 0;
+            line-height: 30px;
+            font-size: 14px;
+            color: white;
+            font-weight: bold;
+            box-sizing: border-box;
+        }
+        .toggle-switch-inner:before {
+            content: attr(data-single);
+            padding-left: 10px;
+            background-color: #2196F3;
+            color: #FFFFFF;
+        }
+        .toggle-switch-inner:after {
+            content: attr(data-compare);
+            padding-right: 10px;
+            background-color: #fa4141;
+            color: #FFFFFF;
+            text-align: right;
+        }
+        .toggle-switch-switch {
+            display: block;
+            width: 18px;
+            margin: 6px;
+            background: #FFFFFF;
+            position: absolute;
+            top: 0;
+            bottom: 0;
+            right: 166px;
+            border: 2px solid #999999;
+            border-radius: 20px;
+            transition: all 0.3s ease-in 0s;
+        }
+        .toggle-switch-checkbox:checked + .toggle-switch-label .toggle-switch-inner {
+            margin-left: 0;
+        }
+        .toggle-switch-checkbox:checked + .toggle-switch-label .toggle-switch-switch {
+            right: 0px;
+        }
+        .loader {
+            color: #000000;
+            display: none;
+            position: relative;
+            font-size: 48px;
+            font-family: Arial, Helvetica, sans-serif;
+            box-sizing: border-box;
+          }
+          .loader::after {
+            content: '';  
+            width: 5px;
+            height: 5px;
+            background: currentColor;
+            position: absolute;
+            bottom: 10px;
+            right: -5px;
+            box-sizing: border-box;
+            animation: animloader 1s linear infinite;
+          }
+          
+          @keyframes animloader {
+            0% {
+              box-shadow: 10px 0 rgba(255, 255, 255, 0), 20px 0 rgba(255, 255, 255, 0);
+            }
+            50% {
+              box-shadow: 10px 0 black, 20px 0 rgba(255, 255, 255, 0);
+            }
+            100% {
+              box-shadow: 10px 0 black, 20px 0 black;
+            }
+          }
+    </style>
+    {%endblock%}
+{%block body%}
+
+
+<body>
+   
+<div id="map-container">
+    <div id="menu-container"><a class="toggle-menu" href="#">
+        <i></i>
+        <i></i>
+        <i></i>
+      </a>
+      
+    </div>
+    <div class="menu-drawer">
+            <div id=sidebar>
+                <div id="toggle">
+                    <div class="toggle-switch-container">
+                        <input type="checkbox" id="pageview-toggle" class="toggle-switch-checkbox" name="pageview" value="single" checked>
+                        <label for="pageview-toggle" class="toggle-switch-label">
+                            <span class="toggle-switch-inner" data-single="Temporal Snapshot" data-compare="Spatial Snapshot"></span>
+                            <span class="toggle-switch-switch"></span>
+                        </label>
+                    </div>
+                </div>
+
+        <!--add radio buttons for regional scale-->
+            <div class="control-group">
+                <p> Spatial Scale </p>
+                <input type="radio" id="location" name="regional" value="location" checked>
+                <label for="location">Location</label>
+                <input type="radio" id="state" name="regional" value="state">
+                <label for="state">state</label>
+                <input type="radio" id="district" name="regional" value="district">
+                <label for="district">district</label> <br>
+                <input type="radio" id="basin" name="regional" value="basin">
+                <label for="basin">basin</label>
+                <input type="radio" id="latlng" name="regional" value="latlng">
+                <label for="latlng">latlng</label>
+                <div id="latlng-inputs" style="display:none;">
+                    <label for="latitude">Latitude:</label>
+                    <input type="number" id="latitude" name="latitude" step="any"><br>
+                    <label for="longitude">Longitude:</label>
+                    <input type="number" id="longitude" name="longitude" step="any" style="margin-top:2px;"><br>
+                    <button onclick="submitLatLng()">Submit</button>
+                </div>
+            </div>
+            <!-- Add radio buttons to select mplot type -->
+            <div class="control-group">
+                <p> Variable </p>
+                <input type="radio" id="showPrecipitation" name="mplotType" value="showPrecipitation" checked>
+                <label for="showPrecipitation">Precipitation</label>
+                <input type="radio" id="Tmax" name="mplotType" value="Tmax">
+                <label for="Tmax">Tmax</label>
+                <input type="radio" id="Tmin" name="mplotType" value="Tmin">
+                <label for="Tmin">Tmin</label>
+            </div>
+        <!--add radio buttons for temporal scale-->
+            <div class="control-group">
+                <p> Temporal Scale </p>
+                <input type="radio" id="annual" name="temporal" value="annual" checked>
+                <label for="annual">annual</label>
+                <input type="radio" id="monthly" name="temporal" value="monthly">
+                <label for="monthly">monthly</label>
+                <input type="radio" id="daily" name="temporal" value="daily">
+                <label for="daily">daily</label>
+            </div>
+            <!-- Add radio buttons to select compare mplot type -->
+            <div id="compare-mplot" class="control-group" style="display:none;">
+                <p> Variable </p>
+                <input type="radio" id="compareshowPrecipitation" name="comparemplotType" value="compareshowPrecipitation" checked>
+                <label for="compareshowPrecipitation">Precipitation</label>
+                <input type="radio" id="compareTmax" name="comparemplotType" value="compareTmax">
+                <label for="compareTmax">Tmax</label>
+                <input type="radio" id="compareTmin" name="comparemplotType" value="compareTmin">
+                <label for="compareTmin">Tmin</label>
+            </div>
+            <!-- Add radio buttons to compre layers -->
+            <div id="compare-view"  class="control-group" style="display:none;">
+                <p> Time Scale </p>
+                <input type="radio" id="hist_observed" name="compareview" value="hist_observed" checked>
+                <label for="hist_observed">Historical vs Observed</label><br>
+                <input type="radio" id="ssp245near_ssp585near" name="compareview" value="ssp245near_ssp585near">
+                <label for="ssp245near_ssp585near">Ssp245 near vs Ssp585 near</label><br>
+                <input type="radio" id="ssp245mid_ssp585mid" name="compareview" value="ssp245mid_ssp585mid">
+                <label for="ssp245mid_ssp585mid">Ssp245 mid vs Ssp585 mid</label><br>
+                <input type="radio" id="ssp245far_ssp585far" name="compareview" value="ssp245far_ssp585far">
+                <label for="ssp245far_ssp585far">Ssp245 far vs Ssp585 far</label>
+            </div>
+            <button id="download-btn">Download Data</button>
+            <div id="address" style="margin-top:10px;"></div>
+            <span class="loader" id="loading-widget">Loading</span>
+        </div>
+    </div>
+    <div id="map-wrapper">
+        <div id='map'></div>
+        <div id="divider"></div>
+        <div id="mplot"></div>
+    </div> 
+
+
+</div>
+{%endblock%}
+{%block script%}	
+<script src="https://cdn.bokeh.org/bokeh/release/bokeh-3.4.0.min.js"></script>
+<script src="https://cdn.bokeh.org/bokeh/release/bokeh-widgets-3.4.0.min.js"></script>
+<script src="https://cdn.bokeh.org/bokeh/release/bokeh-tables-3.4.0.min.js"></script>
+<script src="https://cdn.bokeh.org/bokeh/release/bokeh-api-3.4.0.min.js"></script>
+    
+            <script src="{% static 'plugins/jquery/jquery.min.js' %}"></script>
+            <!-- Bootstrap 3.1 -->
+            <script src="{% static 'plugins/bootstrap/bootstrap.min.js' %}"></script>
+            <!-- Slick Carousel -->
+            <script src="{% static 'plugins/slick-carousel/slick.min.js' %}"></script>
+            <!-- Portfolio Filtering -->
+            <script src="{% static 'plugins/filterzr/jquery.filterizr.min.js' %}"></script>
+            <!-- Magnific popup -->
+            <script src="{% static 'plugins/magnific-popup/dist/jquery.magnific-popup.min.js' %}"></script>
+            
+            <!-- wow.min Script -->
+            <script src="{% static 'plugins/wow/wow.min.js' %}"></script>
+            <!-- Custom js -->
+            <script src="{% static 'js/script.js' %}"></script>
+            
+        
+            <script src='https://unpkg.com/leaflet@1.9.4/dist/leaflet.js'></script>
+
+
+            <script src='{% static "leaflet-side-by-side-gh-pages/leaflet-side-by-side.js" %}'></script>        
+            <script src="https://cdn.jsdelivr.net/npm/axios/dist/axios.min.js"></script> 
+            <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+
+<script>
+    var gLat=22; //current latitude
+    var gLng=84; //current longitude
+    var gmplotType="showPrecipitation"; //which type of temporal variable user want to fetch data
+    var gtemporal="annual"; //what kind of data user wants
+    var gregional="location"; //current state of regional variable over which user want to fetch data
+    var currentAddress=""; //address based on latest click
+    var gurl=""; //latest url to request data
+    var gstyle; // latest style for shapefile but has not been used yet, will need when we need to do dynamic styling for shapefile
+    var gboollatlng=false; //to show latitude longitude field as per user will
+    var gpageview="single"; // if user request for temporal snapshot page 
+    var gSessionKey; //used to store session key to download latest requested data
+    var gfirstclick=false; //if first click has made or not till loading
+    var gzeroclick=false; // if clicked or not till loading
+    var gmplotheight=400; // height of current plot container
+    var gmplotwidth=1400; //current plot width
+    var ghtml; // requested dashboard.html that to be inserted in main document
+    var gtogglemenu=false; //if toggle menu is active or not
+    var gcomparemplotType="compareshowPrecipitation"; //which type of spatial snapshot variable is requested
+    var gcompareview="hist_observed"; //if spatial snapshot is required or not
+    var gstatepreloading; //to preload state geojson layer
+    var gdistrictpreloading; //to preload district geojson layer
+    var gbasinpreloading; //to preload basin geojson layer
+
+    var map = L.map('map', {
+        center: [gLat, gLng],
+        zoom: 5,
+        minZoom: 4,
+        zoomControl: false // Disable the default zoom control
+    });
+
+    // Add the zoom control with a custom position
+    L.control.zoom({
+        position: 'topright'
+    }).addTo(map);
+        //by default location is checked.
+    var osmLayer = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        attribution: '© OpenStreetMap contributors'
+    }).addTo(map);
+    marker=L.marker([gLat, gLng]).addTo(map);
+    marker.setOpacity(0);
+   
+
+    // Add your GeoServer WMS layer
+var nexrad = L.tileLayer.wms('http://172.18.16.22:8080/geoserver/cis/wms', {
+    layers: 'cis:HP_fill',
+    format: 'image/png',
+    transparent: true,
+    attribution: "testing wms district"
+    });
+    var stamenLayer = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+    });
+    sbslayer=L.control.sideBySide(osmLayer, stamenLayer);
+    //osm layer->wms layer->osm layer->side-by-side control. this is the order to make it work
+
+
+function stylegeojson(geojson){
+    const geojsonlayer = L.geoJSON(geojson, {
+        style: {
+            fillColor: 'blue' // Set a default color
+            },
+        onEachFeature: function(feature, layer) {
+            // Add a hover event listener to the layer
+            layer.on('mouseover', function() {
+            // Change the style of the hovered feature
+            layer.setStyle({
+                fillColor: 'red'
+            });
+            // Bind a tooltip to the layer with the state name
+            layer.bindTooltip(feature.properties.BA_NAME, {
+                permanent: false,
+                direction: 'center',
+                className: 'leaflet-tooltip'
+            }).openTooltip();
+            });
+    
+            // Add a mouseout event listener to the layer
+            layer.on('mouseout', function() {
+            // Reset the style of the layer
+            layer.setStyle({
+                fillColor: 'blue'
+            });
+            });
+        }
+        });
+        layer = geojsonlayer;
+        layer.addTo(map);   
+}
+
+async function fetchGeoJSON(url) { //used to fetch geojson if preloader fails to fetch.
+    try {
+        // Fetch the zip file
+        const response = await fetch(url);
+        const blob = await response.blob();
+    
+        // Create a ZipFile instance from the blob
+        const zipFile = new JSZip();
+        const zip = await zipFile.loadAsync(blob);
+    
+        // Get the first file in the archive (assuming it's the GeoJSON)
+        const geojsonFile = Object.keys(zip.files)[0];
+    
+        // Extract the GeoJSON data
+        const geojsonText = await zip.file(geojsonFile).async('string');
+        const geojson = JSON.parse(geojsonText);
+        stylegeojson(geojson);
+    } catch (error) {
+        console.error(error);
+    }
+    }
+function removeAllLayers() {
+    map.eachLayer(function(layer) {
+        map.removeLayer(layer);
+    });
+}
+
+function showlocation(gLat, gLng, gurl, gtemporal, gregional){
+    removeAllLayers();
+    map.removeControl(sbslayer);
+    osmLayer.addTo(map);
+    if(gpageview==='compare'){
+    nexrad.addTo(map);
+    stamenLayer.addTo(map);
+    sbslayer.addTo(map);
+    console.log("well done");
+    
+        // Function to print layer names
+        function printLayerNames(layer) {
+            if (layer.options && layer.options.layers) {
+                console.log('Layer Name:', layer.options.layers);
+            } else {
+                console.log('Layer Name: Base Layer or Other');
+            }
+        }
+        // Use eachLayer to iterate over layers and print their names
+        map.eachLayer(printLayerNames);
+    }
+      
+    // Example usage:
+    
+
+};
+function showstate(gLat, gLng, gurl, gtemporal, gregional){
+    
+    removeAllLayers();
+    map.removeControl(sbslayer);
+    osmLayer.addTo(map);
+    preloadPromise.then(() => {
+        
+            let geojson;
+            geojson = gstatepreloading.features;
+            stylegeojson(geojson);
+    }).catch(error => {
+        console.error('Error during preloading:', error);
+        console.log("trying to load again");
+        var url="{% static 'geojson/India_State_Boundary_modified.geojson' %}";
+        fetchGeoJSON(url);
+    });
+
+};
+
+function showdistrict(gLat, gLng, gurl, gtemporal, gregional){
+    
+    
+    removeAllLayers();
+    map.removeControl(sbslayer);
+    osmLayer.addTo(map);
+    preloadPromise.then(() => {
+            let geojson;
+            geojson = gdistrictpreloading.features;
+            stylegeojson(geojson);
+    }).catch(error => {
+        console.error('Error during preloading:', error);
+        console.log("trying to load again");
+        var url="{% static 'geojson/output_modified.geojson' %}";
+        fetchGeoJSON(url);
+    });
+
+
+};
+function showbasin(gLat, gLng, gurl, gtemporal, gregional){
+    
+    removeAllLayers();
+    map.removeControl(sbslayer);
+    osmLayer.addTo(map);
+    preloadPromise.then(() => {
+            let geojson;
+            geojson = gbasinpreloading.features;
+            stylegeojson(geojson);
+        
+      
+    }).catch(error => {
+        console.error('Error during preloading:', error);
+        console.log("trying to load again");
+        var url="{% static 'geojson/India_Basin_modified.geojson' %}";
+        fetchGeoJSON(url);
+    });
+
+};
+
+function showlatlng(gLat, gLng, gurl, gtemporal, gregional){
+    removeAllLayers();
+    map.removeControl(sbslayer);
+    osmLayer.addTo(map);
+    document.getElementById('latlng-inputs').style.display='block';
+};
+function comparevariable(gcomparemplotType,gcompareview){
+    var leftvar;
+    var rightvar;
+
+    if(gcomparemplotType==="compareshowPrecipitation" && gcompareview==="hist_observed"){
+            leftvar='cis:hist_pr';
+            rightvar='cis:hist_pr'; //change it to observed
+        }else if(gcomparemplotType==="compareshowPrecipitation" && gcompareview==="ssp245near_ssp585near"){
+            leftvar='cis:ssp245_pr_2015_2040';
+            rightvar='cis:ssp585_pr_2015_2040';
+        }else if(gcomparemplotType==="compareshowPrecipitation" && gcompareview==="ssp245mid_ssp585mid"){
+            leftvar='cis:ssp245_pr_2041_2070';
+            rightvar='cis:ssp585_pr_2041_2070';
+        }else if(gcomparemplotType==="compareshowPrecipitation" && gcompareview==="ssp245far_ssp585far"){
+            leftvar='cis:ssp245_pr_2071_2100';
+            rightvar='cis:ssp585_pr_2071_2100';
+        }else if(gcomparemplotType==="compareTmax" && gcompareview==="hist_observed"){
+            leftvar='cis:hist_tasmax';
+            rightvar='cis:hist_tasmax'; //change it to observed
+        }else if(gcomparemplotType==="compareTmax" && gcompareview==="ssp245near_ssp585near"){
+            leftvar='cis:ssp245_tasmax_2015_2040';
+            rightvar='cis:ssp585_tasmax_2015_2040';
+        }else if(gcomparemplotType==="compareTmax" && gcompareview==="ssp245mid_ssp585mid"){
+            leftvar='cis:ssp245_tasmax_2041_2070';
+            rightvar='cis:ssp585_tasmax_2041_2070';
+        }else if(gcomparemplotType==="compareTmax" && gcompareview==="ssp245far_ssp585far"){
+            leftvar='cis:ssp245_tasmax_2071_2100';
+            rightvar='cis:ssp585_tasmax_2071_2100';
+        }else if(gcomparemplotType==="compareTmin" && gcompareview==="hist_observed"){
+            leftvar='cis:hist_tasmin';
+            rightvar='cis:hist_tasmin'; //change it to observed
+        }else if(gcomparemplotType==="compareTmin" && gcompareview==="ssp245near_ssp585near"){
+            leftvar='cis:ssp245_tasmin_2015_2040';
+            rightvar='cis:ssp585_tasmin_2015_2040';
+        }else if(gcomparemplotType==="compareTmin" && gcompareview==="ssp245mid_ssp585mid"){
+            leftvar='cis:ssp245_tasmin_2041_2070';
+            rightvar='cis:ssp585_tasmin_2041_2070';
+        }else if(gcomparemplotType==="compareTmin" && gcompareview==="ssp245far_ssp585far"){
+            leftvar='cis:ssp245_tasmin_2071_2100';
+            rightvar='cis:ssp585_tasmin_2071_2100';
+        }
+    return [leftvar, rightvar];
+}
+
+function arrangecomparelayers(gcomparemplotType,gcompareview){
+    removeAllLayers();
+    map.removeControl(sbslayer);
+    osmLayer.addTo(map);
+
+    //add left layer
+    var himachaldem = L.tileLayer.wms('http://172.18.16.22:8080/geoserver/cis/wms', {
+        layers: 'cis:HP_fill',
+        format: 'image/png',
+        transparent: true,
+        attribution: "testing wms district"
+        });
+    //add right layer
+    var tasmax= L.tileLayer.wms('http://172.18.16.22:8080/geoserver/cis/wms', {
+        layers: 'cis:TMP_2m',
+        format: 'image/png',
+        transparent: true,
+        attribution: "testing wms district"
+        });
+
+    const [leftvar, rightvar] = comparevariable(gcomparemplotType,gcompareview);
+    //construct left layer
+    var dynamicleft = L.tileLayer.wms('http://172.18.16.22:8080/geoserver/cis/wms', {
+        layers: leftvar,
+        format: 'image/png',
+        transparent: true,
+        attribution: "testing wms district"
+        });
+    //construct right layer
+    var dynamicright = L.tileLayer.wms('http://172.18.16.22:8080/geoserver/cis/wms', {
+        layers: rightvar,
+        format: 'image/png',
+        transparent: true,
+        attribution: "testing wms district"
+        });
+    //var leftlayer=dynamicleft;
+    //var rightlayer=dynamicright;
+
+    var leftlayer=himachaldem;
+    var rightlayer=tasmax;
+    leftlayer.addTo(map);
+    rightlayer.addTo(map);
+    sbslayer=L.control.sideBySide(leftlayer, rightlayer);
+    sbslayer.addTo(map);
+}
+
+
+// Attach event listeners to regional radio buttons
+document.querySelectorAll('input[name="regional"]').forEach(function(radio) {
+    radio.addEventListener('change', function () {
+        var mplotType = this.value;
+        gregional=mplotType;
+        
+        
+        if (gLat && gLng) {
+            if (gregional === 'location') {
+                document.getElementById('latlng-inputs').style.display='none';
+                if(gboollatlng==true){if (gLat && gLng) {
+                    if (gregional === 'location') {
+                        document.getElementById('latlng-inputs').style.display='none';
+                        if(gboollatlng==true){
+                            gLat=22;
+                            gLng=84;
+                            map.setView([gLat, gLng], 5);
+                        }
+                        gboollatlng=false;
+                        
+                        showlocation(gLat, gLng, gurl, gtemporal, gregional);
+                    } else if (gregional === 'state') {
+                        document.getElementById('latlng-inputs').style.display='none';
+                        if(gboollatlng==true){
+                            gLat=22;
+                            gLng=84;
+                            map.setView([gLat, gLng], 5);
+                        }
+                        gboollatlng=false;
+                        showstate(gLat, gLng, gurl, gtemporal, gregional);
+                    } else if (gregional === 'district') {
+                        document.getElementById('latlng-inputs').style.display='none';
+                        if(gboollatlng==true){
+                            gLat=22;
+                            gLng=84;
+                            map.setView([gLat, gLng], 5);
+                        }
+                        gboollatlng=false;
+                        showdistrict(gLat, gLng, gurl, gtemporal, gregional);
+                    } else if (gregional === 'basin') {
+                        document.getElementById('latlng-inputs').style.display='none';
+                        if(gboollatlng==true){
+                            gLat=22;
+                            gLng=84;
+                            map.setView([gLat, gLng], 5);
+                        }
+                        gboollatlng=false;
+                        showbasin(gLat, gLng, gurl, gtemporal, gregional);
+                    }else{
+                        gboollatlng=true;
+                        showlatlng(gLat, gLng, gurl, gtemporal, gregional)
+                    }
+                }
+                    gLat=22;
+                    gLng=84;
+                    map.setView([gLat, gLng], 5);
+                }
+                gboollatlng=false;
+                showlocation(gLat, gLng, gurl, gtemporal, gregional);
+            } else if (gregional === 'state') {
+                document.getElementById('latlng-inputs').style.display='none';
+                if(gboollatlng==true){
+                    gLat=22;
+                    gLng=84;
+                    map.setView([gLat, gLng], 5);
+                }
+                gboollatlng=false;
+                showstate(gLat, gLng, gurl, gtemporal, gregional);
+            } else if (gregional === 'district') {
+                document.getElementById('latlng-inputs').style.display='none';
+                if(gboollatlng==true){
+                    gLat=22;
+                    gLng=84;
+                    map.setView([gLat, gLng], 5);
+                }
+                gboollatlng=false;
+                showdistrict(gLat, gLng, gurl, gtemporal, gregional);
+            } else if (gregional === 'basin') {
+                document.getElementById('latlng-inputs').style.display='none';
+                if(gboollatlng==true){
+                    gLat=22;
+                    gLng=84;
+                    map.setView([gLat, gLng], 5);
+                }
+                gboollatlng=false;
+                showbasin(gLat, gLng, gurl, gtemporal, gregional);
+            }else{
+                gboollatlng=true;
+                showlatlng(gLat, gLng, gurl, gtemporal, gregional)
+            }
+        }
+    });
+});
+// Attach event listeners to show type of data radio buttons
+document.querySelectorAll('input[name="mplotType"]').forEach(function(radio) {
+    radio.addEventListener('change', function () {
+        var mplotType = this.value;
+        gmplotType=mplotType;
+        
+        if (gLat && gLng) {
+            if (gmplotType === 'showPrecipitation') {
+                getOut(gLat, gLng, gurl, gtemporal,gregional);
+            } else if (gmplotType === 'Tmax') {
+                getOutTmax(gLat, gLng, gurl, gtemporal,gregional);
+            } else if (mplotType === 'Tmin') {
+                getOutTmin(gLat, gLng, gurl, gtemporal,gregional);
+            } 
+        }
+    });
+});
+// Attach event listeners to show type of compare radio buttons
+document.querySelectorAll('input[name="comparemplotType"]').forEach(function(radio) {
+    radio.addEventListener('change', function () {
+        var mplotType = this.value;
+        gcomparemplotType=mplotType;
+        arrangecomparelayers(gcomparemplotType,gcompareview);
+    });
+});
+// Attach event listeners to show type of compare view radio buttons
+document.querySelectorAll('input[name="compareview"]').forEach(function(radio) {
+    radio.addEventListener('change', function () {
+        var mplotType = this.value;
+        gcompareview=mplotType;
+        arrangecomparelayers(gcomparemplotType,gcompareview);
+    });
+});
+// Attach event listeners to pageview radio buttons
+document.getElementById('pageview-toggle').addEventListener('change', function() {
+    var mplotType = this.checked ? 'single' : 'compare';
+    gpageview = mplotType;
+    console.log(gpageview);
+    if (gpageview==="single") {
+        var elements = document.getElementsByClassName('control-group');
+        for (var i = 0; i < elements.length; i++) {
+            elements[i].style.display = 'block';
+        }
+
+        document.getElementById('download-btn').style.display='block';
+        document.getElementById('address').style.display='block';
+        document.getElementById('mplot').style.display='block';
+        document.getElementById('divider').style.display='block';
+        document.getElementById('latlng-inputs').style.display='block';
+        document.getElementById('compare-mplot').style.display='none';
+        document.getElementById('compare-view').style.display='none';
+        if (gLat && gLng) {
+            if (gregional === 'location') {
+                document.getElementById('latlng-inputs').style.display = 'none';
+                if (gboollatlng == true) {
+                    gLat = 22;
+                    gLng = 84;
+                    map.setView([gLat, gLng], 5);
+                }
+                gboollatlng = false;
+                showlocation(gLat, gLng, gurl, gtemporal, gregional);
+            } else if (gregional === 'state') {
+                document.getElementById('latlng-inputs').style.display = 'none';
+                if (gboollatlng == true) {
+                    gLat = 22;
+                    gLng = 84;
+                    map.setView([gLat, gLng], 5);
+                }
+                gboollatlng = false;
+                showstate(gLat, gLng, gurl, gtemporal, gregional);
+            } else if (gregional === 'district') {
+                document.getElementById('latlng-inputs').style.display = 'none';
+                if (gboollatlng == true) {
+                    gLat = 22;
+                    gLng = 84;
+                    map.setView([gLat, gLng], 5);
+                }
+                gboollatlng = false;
+                showdistrict(gLat, gLng, gurl, gtemporal, gregional);
+            } else if (gregional === 'basin') {
+                document.getElementById('latlng-inputs').style.display = 'none';
+                if (gboollatlng == true) {
+                    gLat = 22;
+                    gLng = 84;
+                    map.setView([gLat, gLng], 5);
+                }
+                gboollatlng = false;
+                showbasin(gLat, gLng, gurl, gtemporal, gregional);
+            } else {
+                gboollatlng = true;
+                showlatlng(gLat, gLng, gurl, gtemporal, gregional)
+            }
+        }
+    }else{
+        //Hiding information tools from sidebar
+        var elements = document.getElementsByClassName('control-group');
+        for (var i = 0; i < elements.length; i++) {
+            elements[i].style.display = 'none';
+        }
+        document.getElementById('download-btn').style.display='none';
+        document.getElementById('address').style.display='none';
+        document.getElementById('mplot').style.display='none';
+        $('#mplot').css('height', '10px');
+        document.getElementById('divider').style.display='none';
+        document.getElementById('latlng-inputs').style.display='none';
+        //showlocation(gLat, gLng, gurl, gtemporal, gregional);
+        //Showing compare tools
+        document.getElementById('compare-mplot').style.display='block';
+        document.getElementById('compare-view').style.display='block';
+        arrangecomparelayers(gcomparemplotType,gcompareview);
+    }
+});
+// Function to fetch data using Fetch API
+async function fetchwmsdata(temp) {
+    // Make a GetFeatureInfo request to GeoServer
+    var uRl = temp;
+    try {
+        const response = await fetch(uRl);
+        const data = await response.text();
+
+        // Parse the response data
+        var lines = data.trim().split('\n');
+        var featureInfo = {};
+        lines.forEach(line => {
+            var parts = line.split('=');
+            if (parts.length === 2) {
+                var key = parts[0].trim();
+                var value = parts[1].trim();
+                featureInfo[key] = value;
+            }
+        });
+        var objectid;
+        // Store individual pieces of data and filter it 
+        if(gregional==='district'){
+            var tempobj = featureInfo['objectid'];
+            objectid=tempobj;
+            var distname = featureInfo['distname'];
+            
+            document.getElementById('address').innerHTML = distname;}
+            else if(gregional==='state'){
+                var tempobj = featureInfo['object'];
+                objectid=tempobj;
+                var statename = featureInfo['Name'];
+                console.log(objectid,"for state");
+                document.getElementById('address').innerHTML = statename;}
+            else if(gregional==='basin'){
+                var tempobj = featureInfo['OBJECTID'];
+                objectid=tempobj;
+                var basinname = featureInfo['BA_NAME'];
+                console.log(objectid,"for basin");
+                document.getElementById('address').innerHTML = basinname;}
+        return objectid;
+    } catch (error) {
+        console.error("Error:", error);
+        return null; // Return null in case of error
+    }
+}; 
+
+    // Function to fetch data using Fetch API
+    function fetchData(urlData) {
+        fetch(urlData)
+            .then(response => response.text())
+            .then(html => {
+                firstclick();
+                // Extract the text content of the div with id "key"
+                /*const parser = new DOMParser();
+                const doc = parser.parseFromString(html, 'text/html');
+                const keyDiv = doc.querySelector('#key');
+                var key = keyDiv.textContent;
+                console.log(key);
+                if(gSessionKey==key){
+                    console.log("session key matched");*/
+                ghtml=html;
+                /*...................do not delete this..........................................................
+                document.getElementById('mplot').innerHTML = html;
+                
+                console.log("data response inserted")
+                // Find and execute the script within the inserted HTML
+                const scripts = document.getElementById('mplot').getElementsByTagName('script');
+                for (let i = 0; i < scripts.length; i++) {
+                    const script = document.createElement('script');
+                    script.textContent = scripts[i].textContent;
+                    script.classList.add('mplot-script');
+                    document.body.appendChild(script);
+                    
+                } 
+                .......................till here..........*/
+                // Adjust the inner contents accordingly
+                erasebokehscripts();
+                loadbokehscripts(); 
+                /*}*/
+                document.getElementById('loading-widget').style.display="none";
+            })
+            .catch(error => {
+                console.error("Error:", error);
+                document.getElementById('loading-widget').style.display="none";
+            });
+            
+    }; 
+
+function replaceText(originalText, searchText, replacementText) {
+    const startIndex = originalText.indexOf(searchText);
+    if (startIndex !== -1) {
+        const endIndex = startIndex + searchText.length;
+        const newText = originalText.substring(0, startIndex) + replacementText + originalText.substring(endIndex);
+        return newText;
+    } else {
+        return originalText; // Search text not found
+    }
+    }
+
+
+async function getOut(gLat, gLng, gurl,gtemporal,gregional){
+    var temp=gurl;
+    var templat=gLat;
+    var tempLng=gLng;
+    var tTemporal=gtemporal;
+    var gregional=gregional;
+    var turl;
+    gfirstclick=true;
+    document.getElementById('loading-widget').style.display="inline-block";
+    document.getElementById('download-btn').style.backgroundColor = '#00C000'; // Use camelCase for CSS properties in JavaScript
+    
+    if(gregional==='location'||gregional==='latlng'){
+        getAddressFromLatLng(templat, tempLng);
+            if(tTemporal==='annual'){
+                
+                var urlData = "{% url 'ppt_view_netcdf_annual' %}?lat=" + templat + "&lng=" + tempLng +"&tTemporal="+tTemporal;
+                turl=urlData;
+                var key='ppt_view_netcdf_annual';
+                gSessionKey=key;
+            } else if(tTemporal==='monthly'){
+                
+                var urlData = "{% url 'ppt_view_netcdf_monthly' %}?lat=" + templat + "&lng=" + tempLng +"&tTemporal="+tTemporal;
+                turl=urlData;
+                var key='ppt_view_netcdf_monthly';
+                gSessionKey=key;
+            }
+              else if(tTemporal==='daily'){
+                
+                var urlData = "{% url 'ppt_view_netcdf_daily' %}?lat=" + templat + "&lng=" + tempLng +"&tTemporal="+tTemporal;
+                turl=urlData;
+                var key='ppt_view_netcdf_daily';
+                gSessionKey=key;
+                
+                
+              }
+        
+         } 
+    var objectid = await fetchwmsdata(temp);
+    if(tTemporal==='annual'){
+        if(gregional==='district'){
+            if ((!objectid)) {
+                alert("Please select the shapefile. ");
+                document.getElementById('loading-widget').style.display="none";
+                return; // Exit the function if the object ID is not an integer
+            }
+            var urlData = "{% url 'ppt_view_csv_annual_district' %}?objectid=" + objectid +"&tTemporal="+tTemporal;
+            turl=urlData;
+            var key='ppt_view_csv_annual_district';
+            gSessionKey=key;
+        }else if(gregional==='state'){
+            if ((!objectid)) {
+                alert("Please select the shapefile. ");
+                document.getElementById('loading-widget').style.display="none";
+                return; // Exit the function if the object ID is not an integer
+            }
+            var urlData = "{% url 'ppt_view_csv_annual_state' %}?objectid=" + objectid +"&tTemporal="+tTemporal;
+            turl=urlData;
+            var key='ppt_view_csv_annual_state';
+            gSessionKey=key;
+        }else if(gregional==='basin'){
+            if ((!objectid)) {
+                alert("Please select the shapefile. ");
+                document.getElementById('loading-widget').style.display="none";
+                return; // Exit the function if the object ID is not an integer
+            }
+            var urlData = "{% url 'ppt_view_csv_annual_basin' %}?objectid=" + objectid +"&tTemporal="+tTemporal;
+            turl=urlData;
+            var key='ppt_view_csv_annual_basin';
+            gSessionKey=key;
+        }
+        
+    } else if(tTemporal==='monthly'){
+        if(gregional==='district'){
+            if ((!objectid)) {
+                alert("Please select the shapefile. ");
+                document.getElementById('loading-widget').style.display="none";
+                return; // Exit the function if the object ID is not an integer
+            }
+            var urlData = "{% url 'ppt_view_csv_monthly_district' %}?objectid=" + objectid +"&tTemporal="+tTemporal;
+        turl=urlData;
+            var key='ppt_view_csv_monthly_district';
+            gSessionKey=key;
+        }else if(gregional==='state'){
+            if ((!objectid)) {
+                alert("Please select the shapefile. ");
+                return; // Exit the function if the object ID is not an integer
+            }
+            var urlData = "{% url 'ppt_view_csv_monthly_state' %}?objectid=" + objectid +"&tTemporal="+tTemporal;
+        turl=urlData;
+            var key='ppt_view_csv_monthly_state';
+            gSessionKey=key;
+        }else if(gregional==='basin'){
+            if ((!objectid)) {
+                alert("Please select the shapefile. ");
+                document.getElementById('loading-widget').style.display="none";
+                return; // Exit the function if the object ID is not an integer
+            }
+            var urlData = "{% url 'ppt_view_csv_monthly_basin' %}?objectid=" + objectid +"&tTemporal="+tTemporal;
+            turl=urlData;
+            var key='ppt_view_csv_monthly_basin';
+            gSessionKey=key;
+        }
+        
+    }
+      else if(tTemporal==='daily'){
+        if(gregional==='district'){
+            if ((!objectid)) {
+                alert("Please select the shapefile. ");
+                document.getElementById('loading-widget').style.display="none";
+                return; // Exit the function if the object ID is not an integer
+            }
+            var urlData = "{% url 'ppt_view_csv_daily_district' %}?objectid=" + objectid +"&tTemporal="+tTemporal;
+        turl=urlData;
+            var key='ppt_view_csv_daily_district';
+            gSessionKey=key;
+        }else if(gregional==='state'){
+            if ((!objectid)) {
+                alert("Please select the shapefile. ");
+                document.getElementById('loading-widget').style.display="none";
+                return; // Exit the function if the object ID is not an integer
+            }
+            var urlData = "{% url 'ppt_view_csv_daily_state' %}?objectid=" + objectid +"&tTemporal="+tTemporal;
+        turl=urlData;
+            var key='ppt_view_csv_daily_state';
+            gSessionKey=key;
+        }else if(gregional==='basin'){
+            if ((!objectid)) {
+                alert("Please select the shapefile. ");
+                document.getElementById('loading-widget').style.display="none";
+                return; // Exit the function if the object ID is not an integer
+            }
+            var urlData = "{% url 'ppt_view_csv_daily_basin' %}?objectid=" + objectid +"&tTemporal="+tTemporal;
+            turl=urlData;
+            var key='ppt_view_csv_daily_basin';
+            gSessionKey=key;
+        }
+        
+      }
+    
+    fetchData(turl);
+
+    //getAddressFromLatLng(lat, lng);
+};
+async function getOutTmax(gLat, gLng, gurl,gtemporal,gregional){
+    var temp=gurl;
+    var templat=gLat;
+    var tempLng=gLng;
+    var tTemporal=gtemporal;
+    var gregional=gregional;
+    var turl;
+    gfirstclick=true;
+    document.getElementById('loading-widget').style.display="inline-block";
+    document.getElementById('download-btn').style.backgroundColor = '#00C000'; // Use camelCase for CSS properties in JavaScript
+    
+    console.log("tmax called")
+    if(gregional==='location'||gregional==='latlng'){
+        getAddressFromLatLng(templat, tempLng);
+            if(tTemporal==='annual'){
+                
+                var urlData = "{% url 'tmax_view_netcdf_annual' %}?lat=" + templat + "&lng=" + tempLng +"&tTemporal="+tTemporal;
+                turl=urlData;
+            var key='tmax_view_netcdf_annual';
+            gSessionKey=key;
+            } else if(tTemporal==='monthly'){
+                
+                var urlData = "{% url 'tmax_view_netcdf_monthly' %}?lat=" + templat + "&lng=" + tempLng +"&tTemporal="+tTemporal;
+                turl=urlData;
+            var key='tmax_view_netcdf_monthly';
+            gSessionKey=key;
+            }
+              else if(tTemporal==='daily'){
+                
+                var urlData = "{% url 'tmax_view_netcdf_daily' %}?lat=" + templat + "&lng=" + tempLng +"&tTemporal="+tTemporal;
+                turl=urlData;
+            var key='tmax_view_netcdf_daily';
+            gSessionKey=key;
+              }
+         } 
+    var objectid = await fetchwmsdata(temp);
+    if(tTemporal==='annual'){
+        if(gregional==='district'){
+            if ((!objectid)) {
+                alert("Please select the shapefile. ");
+                document.getElementById('loading-widget').style.display="none";
+                return; // Exit the function if the object ID is not an integer
+            }
+            var urlData = "{% url 'tmax_view_csv_annual_district' %}?objectid=" + objectid +"&tTemporal="+tTemporal;
+        turl=urlData;
+            var key='tmax_view_csv_annual_district';
+            gSessionKey=key;
+        }else if(gregional==='state'){
+            if ((!objectid)) {
+                alert("Please select the shapefile. ");
+                document.getElementById('loading-widget').style.display="none";
+                return; // Exit the function if the object ID is not an integer
+            }
+            var urlData = "{% url 'tmax_view_csv_annual_state' %}?objectid=" + objectid +"&tTemporal="+tTemporal;
+        turl=urlData;
+            var key='tmax_view_csv_annual_state';
+            gSessionKey=key;
+        }else if(gregional==='basin'){
+            if ((!objectid)) {
+                alert("Please select the shapefile. ");
+                document.getElementById('loading-widget').style.display="none";
+                return; // Exit the function if the object ID is not an integer
+            }
+            var urlData = "{% url 'tmax_view_csv_annual_basin' %}?objectid=" + objectid +"&tTemporal="+tTemporal;
+            turl=urlData;
+            var key='tmax_view_csv_annual_basin';
+            gSessionKey=key;
+        }
+        
+    } else if(tTemporal==='monthly'){
+        if(gregional==='district'){
+            if ((!objectid)) {
+                alert("Please select the shapefile. ");
+                document.getElementById('loading-widget').style.display="none";
+                return; // Exit the function if the object ID is not an integer
+            }
+            var urlData = "{% url 'tmax_view_csv_monthly_district' %}?objectid=" + objectid +"&tTemporal="+tTemporal;
+        turl=urlData;
+            var key='tmax_view_csv_monthly_district';
+            gSessionKey=key;
+        }else if(gregional==='state'){
+            if ((!objectid)) {
+                alert("Please select the shapefile. ");
+                document.getElementById('loading-widget').style.display="none";
+                return; // Exit the function if the object ID is not an integer
+            }
+            var urlData = "{% url 'tmax_view_csv_monthly_state' %}?objectid=" + objectid +"&tTemporal="+tTemporal;
+        turl=urlData;
+            var key='tmax_view_csv_monthly_state';
+            gSessionKey=key;
+        }else if(gregional==='basin'){
+            if ((!objectid)) {
+                alert("Please select the shapefile. ");
+                document.getElementById('loading-widget').style.display="none";
+                return; // Exit the function if the object ID is not an integer
+            }
+            var urlData = "{% url 'tmax_view_csv_monthly_basin' %}?objectid=" + objectid +"&tTemporal="+tTemporal;
+            turl=urlData;
+            var key='tmax_view_csv_monthly_basin';
+            gSessionKey=key;
+        }
+        
+    }
+      else if(tTemporal==='daily'){
+        if(gregional==='district'){
+            if ((!objectid)) {
+                alert("Please select the shapefile. ");
+                document.getElementById('loading-widget').style.display="none";
+                return; // Exit the function if the object ID is not an integer
+            }
+            var urlData = "{% url 'tmax_view_csv_daily_district' %}?objectid=" + objectid +"&tTemporal="+tTemporal;
+        turl=urlData;
+            var key='tmax_view_csv_daily_district';
+            gSessionKey=key;
+        }else if(gregional==='state'){
+            if ((!objectid)) {
+                alert("Please select the shapefile. ");
+                document.getElementById('loading-widget').style.display="none";
+                return; // Exit the function if the object ID is not an integer
+            }
+            var urlData = "{% url 'tmax_view_csv_daily_state' %}?objectid=" + objectid +"&tTemporal="+tTemporal;
+        turl=urlData;
+            var key='tmax_view_csv_daily_state';
+            gSessionKey=key;
+        }else if(gregional==='basin'){
+            if ((!objectid)) {
+                alert("Please select the shapefile. ");
+                document.getElementById('loading-widget').style.display="none";
+                return; // Exit the function if the object ID is not an integer
+            }
+            var urlData = "{% url 'tmax_view_csv_daily_basin' %}?objectid=" + objectid +"&tTemporal="+tTemporal;
+            turl=urlData;
+            var key='tmax_view_csv_daily_basin';
+            gSessionKey=key;
+        }
+      }
+    
+    fetchData(turl);
+    //getAddressFromLatLng(lat, lng);
+};
+async function getOutTmin(gLat, gLng, gurl,gtemporal,gregional){
+    var temp=gurl;
+    var templat=gLat;
+    var tempLng=gLng;
+    var tTemporal=gtemporal;
+    var gregional=gregional;
+    var turl;
+    gfirstclick=true;
+    document.getElementById('loading-widget').style.display="inline-block";
+    document.getElementById('download-btn').style.backgroundColor = '#00C000'; // Use camelCase for CSS properties in JavaScript
+    
+    console.log("tmin called")
+    if(gregional==='location'||gregional==='latlng'){
+        getAddressFromLatLng(templat, tempLng);
+            if(tTemporal==='annual'){
+                
+                var urlData = "{% url 'tmin_view_netcdf_annual' %}?lat=" + templat + "&lng=" + tempLng +"&tTemporal="+tTemporal;
+                turl=urlData;
+            var key='tmin_view_netcdf_annual';
+            gSessionKey=key;
+            } else if(tTemporal==='monthly'){
+                
+                var urlData = "{% url 'tmin_view_netcdf_monthly' %}?lat=" + templat + "&lng=" + tempLng +"&tTemporal="+tTemporal;
+                turl=urlData;
+            var key='tmin_view_netcdf_monthly';
+            gSessionKey=key;
+            }
+              else if(tTemporal==='daily'){
+                
+                var urlData = "{% url 'tmin_view_netcdf_daily' %}?lat=" + templat + "&lng=" + tempLng +"&tTemporal="+tTemporal;
+                turl=urlData;
+            var key='tmin_view_netcdf_daily';
+            gSessionKey=key;
+              }
+         } 
+    var objectid = await fetchwmsdata(temp);
+    if(gregional==='district'){
+        if(tTemporal==='annual'){
+            if ((!objectid)) {
+                alert("Please select the shapefile. ");
+                document.getElementById('loading-widget').style.display="none";
+                return; // Exit the function if the object ID is not an integer
+            }
+            var urlData = "{% url 'tmin_view_csv_annual_district' %}?objectid=" + objectid +"&tTemporal="+tTemporal;
+        turl=urlData;
+            var key='tmin_view_csv_annual_district';
+            gSessionKey=key;
+        }else if(tTemporal==='monthly'){
+            if ((!objectid)) {
+                alert("Please select the shapefile. ");
+                document.getElementById('loading-widget').style.display="none";
+                return; // Exit the function if the object ID is not an integer
+            }
+            var urlData = "{% url 'tmin_view_csv_monthly_district' %}?objectid=" + objectid +"&tTemporal="+tTemporal;
+            turl=urlData;
+            var key='tmin_view_csv_monthly_district';
+            gSessionKey=key;
+        }else if(tTemporal==='daily'){
+            if ((!objectid)) {
+                alert("Please select the shapefile. ");
+                document.getElementById('loading-widget').style.display="none";
+                return; // Exit the function if the object ID is not an integer
+            }
+            var urlData = "{% url 'tmin_view_csv_daily_district' %}?objectid=" + objectid +"&tTemporal="+tTemporal;
+            turl=urlData;
+            var key='tmin_view_csv_daily_district';
+            gSessionKey=key;
+        }
+
+    }else if(gregional==='state'){
+        if(tTemporal==='annual'){
+            if ((!objectid)) {
+                alert("Please select the shapefile. ");
+                document.getElementById('loading-widget').style.display="none";
+                return; // Exit the function if the object ID is not an integer
+            }
+            var urlData = "{% url 'tmin_view_csv_annual_state' %}?objectid=" + objectid +"&tTemporal="+tTemporal;
+            turl=urlData;
+            var key='tmin_view_csv_annual_state';
+            gSessionKey=key;
+        }else if(tTemporal==='monthly'){
+            if ((!objectid)) {
+                alert("Please select the shapefile. ");
+                document.getElementById('loading-widget').style.display="none";
+                return; // Exit the function if the object ID is not an integer
+            }
+            var urlData = "{% url 'tmin_view_csv_monthly_state' %}?objectid=" + objectid +"&tTemporal="+tTemporal;
+            turl=urlData;
+            var key='tmin_view_csv_monthly_state';
+            gSessionKey=key;
+
+        }else if(tTemporal==='daily'){
+            if ((!objectid)) {
+                alert("Please select the shapefile. ");
+                document.getElementById('loading-widget').style.display="none";
+                return; // Exit the function if the object ID is not an integer
+            }
+            var urlData = "{% url 'tmin_view_csv_daily_state' %}?objectid=" + objectid +"&tTemporal="+tTemporal;
+            turl=urlData;
+            var key='tmin_view_csv_daily_state';
+            gSessionKey=key;
+
+        }
+
+    }else if(gregional==='basin'){
+        if(tTemporal==='annual'){
+            if ((!objectid)) {
+                alert("Please select the shapefile. ");
+                document.getElementById('loading-widget').style.display="none";
+                return; // Exit the function if the object ID is not an integer
+            }
+            var urlData = "{% url 'tmin_view_csv_annual_basin' %}?objectid=" + objectid +"&tTemporal="+tTemporal;
+            turl=urlData;
+            var key='tmin_view_csv_annual_basin';
+            gSessionKey=key;
+
+        }else if(tTemporal==='monthly'){
+            if ((!objectid)) {
+                alert("Please select the shapefile. ");
+                document.getElementById('loading-widget').style.display="none";
+                return; // Exit the function if the object ID is not an integer
+            }
+            var urlData = "{% url 'tmin_view_csv_monthly_basin' %}?objectid=" + objectid +"&tTemporal="+tTemporal;
+            turl=urlData;
+            var key='tmin_view_csv_monthly_basin';
+            gSessionKey=key;
+        }else if(tTemporal==='daily'){
+            if ((!objectid)) {
+                alert("Please select the shapefile. ");
+                document.getElementById('loading-widget').style.display="none";
+                return; // Exit the function if the object ID is not an integer
+            }
+            var urlData = "{% url 'tmin_view_csv_daily_basin' %}?objectid=" + objectid +"&tTemporal="+tTemporal;
+            turl=urlData;
+            var key='tmin_view_csv_daily_basin';
+            gSessionKey=key;
+
+        }
+
+    }
+
+    
+    fetchData(turl);
+    //getAddressFromLatLng(lat, lng);
+};
+
+// Attach event listeners to show timeline of data radio buttons
+document.querySelectorAll('input[name="temporal"]').forEach(function(radio) {
+    radio.addEventListener('change', function () {
+        var mplotType = this.value;
+        gtemporal=mplotType;
+        if (gLat && gLng) {
+            if (gtemporal === 'annual') {
+                if (gmplotType === 'showPrecipitation') {
+                    getOut(gLat, gLng, gurl, gtemporal,gregional);
+                } else if (gmplotType === 'Tmax') {
+                    getOutTmax(gLat, gLng, gurl, gtemporal,gregional);
+                } else if (gmplotType === 'Tmin') {
+                    getOutTmin(gLat, gLng, gurl, gtemporal,gregional);
+                } 
+            }else if (gtemporal === 'daily') {
+                
+                if (gmplotType === 'showPrecipitation') {
+                    console.log("reached here too")
+                    getOut(gLat, gLng, gurl, gtemporal,gregional);
+                    
+                }else if (gmplotType === 'Tmax') {
+                    getOutTmax(gLat, gLng, gurl, gtemporal,gregional);
+                }else if (gmplotType === 'Tmin') {
+                    console.log("temporal scale changed   ",gtemporal,gLat,gLng);
+                    getOutTmin(gLat, gLng, gurl, gtemporal,gregional);
+                } 
+            }else if (gtemporal === 'monthly') {
+                if (gmplotType === 'showPrecipitation') {
+                    getOut(gLat, gLng, gurl, gtemporal,gregional);
+                }else if (gmplotType === 'Tmax') {
+                    getOutTmax(gLat, gLng, gurl, gtemporal,gregional);
+                }else if (gmplotType === 'Tmin') {
+                    getOutTmin(gLat, gLng, gurl, gtemporal,gregional);
+                } 
+            } 
+        }
+    });
+});
+
+
+function submitLatLng() {
+    var latitude = parseFloat(document.getElementById('latitude').value);
+    var longitude = parseFloat(document.getElementById('longitude').value);
+
+    if (!isNaN(latitude) && !isNaN(longitude)) {
+        gLat = latitude;
+        gLng = longitude;
+        gfirstclick=true;
+        document.getElementById('download-btn').style.backgroundColor = '#00C000'; // Use camelCase for CSS properties in JavaScript
+        // Update the map view to the new coordinates
+        map.setView([gLat, gLng], 5);
+         // Add marker to the clicked location
+        
+         if (marker) {
+            map.removeLayer(marker); // Remove previous marker if it exists
+        }
+        marker = L.marker([gLat,gLng]).addTo(map); // Add new marker
+        // Show marker
+        marker.setOpacity(1);
+        if (gmplotType === 'showPrecipitation') {
+            getOut(gLat, gLng, gurl, gtemporal,gregional);
+        } else if (gmplotType === 'Tmin') {
+            getOutTmin(gLat, gLng, gurl,gtemporal,gregional);
+        } else if (gmplotType === 'Tmax') {
+            getOutTmax(gLat, gLng, gurl,gtemporal,gregional);
+        }
+    } else {
+        alert('Please enter valid latitude and longitude values.');
+    }
+}
+
+map.on('click', function (e) {
+    var latlng = e.latlng;
+    var lat=latlng.lat;
+    var lng=latlng.lng
+    var sideBySideElement = document.querySelector('.leaflet-sbs-range');
+
+    // Check if the click was on the slider
+    if (e.originalEvent.target === sideBySideElement) {
+        return; // Do nothing if the click was on the slider
+    }
+
+    gLat=lat;
+    gLng=lng;
+    
+    if (gpageview==="single") {
+        if(gregional==='district'){
+            var storelayer='cis:output';
+
+        var url = 'http://172.18.16.22:8080/geoserver/cis/wms' +
+                    '?service=WMS&version=1.1.0&request=GetFeatureInfo' +
+                    '&layers=cis:output' +
+                    '&styles=' +
+                    '&bbox=' + map.getBounds().toBBoxString() +
+                    '&width=' + map.getSize().x +
+                    '&height=' + map.getSize().y +
+                    '&srs=EPSG:4326' +
+                    '&info_format=text/plain' +
+                    '&query_layers=cis:output' +
+                    '&x=' + Math.floor(e.containerPoint.x) +
+                    '&y=' + Math.floor(e.containerPoint.y);
+        
+        gurl=url;
+        }else if(gregional==='state'){
+            var url = 'http://172.18.16.22:8080/geoserver/cis/wms' +
+                    '?service=WMS&version=1.1.0&request=GetFeatureInfo' +
+                    '&layers=cis:India_State_Boundary' +
+                    '&styles=' +
+                    '&bbox=' + map.getBounds().toBBoxString() +
+                    '&width=' + map.getSize().x +
+                    '&height=' + map.getSize().y +
+                    '&srs=EPSG:4326' +
+                    '&info_format=text/plain' +
+                    '&query_layers=cis:India_State_Boundary' +
+                    '&x=' + Math.floor(e.containerPoint.x) +
+                    '&y=' + Math.floor(e.containerPoint.y);
+        
+        gurl=url;
+        }else if(gregional==='basin'){
+            var url = 'http://172.18.16.22:8080/geoserver/cis/wms' +
+                    '?service=WMS&version=1.1.0&request=GetFeatureInfo' +
+                    '&layers=cis:India' +
+                    '&styles=' +
+                    '&bbox=' + map.getBounds().toBBoxString() +
+                    '&width=' + map.getSize().x +
+                    '&height=' + map.getSize().y +
+                    '&srs=EPSG:4326' +
+                    '&info_format=text/plain' +
+                    '&query_layers=cis:India' +
+                    '&x=' + Math.floor(e.containerPoint.x) +
+                    '&y=' + Math.floor(e.containerPoint.y);
+        
+        gurl=url;
+        }
+            
+
+
+
+        // Zoom to the searched location and place a draggable marker
+        map.setView([gLat, gLng], 5);
+        // Add marker to the clicked location
+        
+        if (marker) {
+            map.removeLayer(marker); // Remove previous marker if it exists
+        }
+        marker = L.marker(latlng).addTo(map); // Add new marker
+        // Show marker
+        marker.setOpacity(1);
+
+        
+
+
+        if (gmplotType === 'showPrecipitation') {
+            getOut(gLat, gLng, gurl, gtemporal,gregional);
+        } else if (gmplotType === 'Tmin') {
+            getOutTmin(gLat, gLng, gurl,gtemporal,gregional);
+        } else if (gmplotType === 'Tmax') {
+            getOutTmax(gLat, gLng, gurl,gtemporal,gregional);
+        }
+        
+
+
+}
+    
+
+});
+function getAddressFromLatLng(lat, lng) {
+    // Construct the API URL
+    var apiUrl = `https://nominatim.openstreetmap.org/reverse?format=geojson&lat=${lat}&lon=${lng}
+        `;
+
+    // Make a GET request
+    fetch(apiUrl)
+        .then(response => response.json())
+        .then(data => {
+        // Access the display_name property inside the first feature
+        var displayName = data.features[0].properties.display_name;
+        currentAddress=displayName;
+        console.log(currentAddress);
+        document.getElementById('address').innerHTML = currentAddress;
+        })
+        .catch(error => {
+            console.error("Error:", error);
+        });
+}
+
+
+
+    
+document.getElementById('download-btn').addEventListener('click', function() {
+    var key=gSessionKey;
+    var url="{% url 'download_csv' %}?key="+key; 
+    if (gfirstclick) {
+        fetch(url)
+            .then(response => response.json())
+            .then(data => {
+                if (data.error) {
+                    alert(data.error);
+                } else {
+                    // Handle the CSV data, e.g., download it
+                    downloadCSV(data.Data, 'Data.csv');
+                }
+            })
+            .catch(error => console.error('Error:', error));
+    }
+});
+
+function downloadCSV(csvData, filename) {
+    let blob = new Blob([csvData], { type: 'text/csv' });
+    let url = window.URL.createObjectURL(blob);
+    let a = document.createElement('a');
+    a.setAttribute('hidden', '');
+    a.setAttribute('href', url);
+    a.setAttribute('download', filename);
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+}
+function firstclick(){
+    if(!gzeroclick){
+        document.getElementById('mplot').style.height='40%';
+        document.getElementById('map').style.height='60%';
+        gzeroclick=true;
+        
+    }
+}
+function erasebokehscripts(){
+    // Get all script elements with the class name 'remove-this-script'
+    const scriptsToRemove = document.body.getElementsByClassName('mplot-script');
+    for (let i = 0; i < scriptsToRemove.length; i++) {
+    document.body.removeChild(scriptsToRemove[i]);
+    }
+}
+function loadbokehscripts(){
+    // Get the new width and height of the container
+    var newWidth = $('#mplot').width();
+    var newHeight = $('#mplot').height();
+    var width=newWidth;
+    var height=newHeight;
+    /*var width=gmplotwidth;
+    var height=gmplotheight;*/ 
+    /*I commented global variables because on every mouse move event global height changes but sometimes it give undefined values So, we are not using it here. */ 
+    /*var height=bottomDivNewLocation; */
+    const searchText = '{"width":100,"height":100,';
+    const replacementText = `{"width":${width},"height":${height},`;
+    
+    // Find and execute the script within the inserted HTML
+    const scripts = document.getElementById('mplot').getElementsByTagName('script');
+    document.getElementById('mplot').innerHTML = ghtml;
+    for (let i = 0; i < scripts.length; i++) {
+        const script = document.createElement('script');
+        const newTextContent = replaceText(scripts[i].textContent, searchText, replacementText);
+        script.textContent = newTextContent;
+        script.classList.add('mplot-script');
+        document.body.appendChild(script);
+    }
+    
+}
+$('#divider').mouseup(function() {
+	direction = 'Released';
+    loadbokehscripts();
+});
+
+$('body').mousemove(function(event) {
+	bottomDivNewLocation=SetDivPosition();
+});
+
+$('#divider').mousedown(function(event) {
+	getDivPosition();
+    erasebokehscripts();
+});
+
+var
+	topCurrentHeight = 0,
+	bottomCurrentHeight = 0,
+	currentPosition = 0,
+	newPosition = 0,
+	direction = 'Released';
+
+function getDivPosition(mouse) {
+	direction = 'Pressed';
+	currentPosition = event.pageY;
+	topTempHeight = $('#map').css('height');
+	topHeightArray = topTempHeight.split('p');
+	topCurrentHeight = parseInt(topHeightArray[0]);
+	bottomTempHeight = $('#mplot').css('height');
+	bottomHeightArray = bottomTempHeight.split('p');
+	bottomCurrentHeight = parseInt(bottomHeightArray[0]);
+   
+}
+
+function SetDivPosition(mouse) {
+	if (direction=='Pressed') {
+		newPosition = event.pageY;
+		var movePerPixels = parseInt(newPosition - currentPosition);
+		var topDivNewLocation = parseInt(topCurrentHeight + movePerPixels);
+		if (topDivNewLocation < 10) {
+			$('#map').css('height', '10px');
+		}
+		var bottomDivNewLocation = parseInt(bottomCurrentHeight - movePerPixels);
+		if (bottomDivNewLocation < 10) {
+			$('#mplot').css('height', '10px');
+		}
+		else {
+			$('#map').css('height', topDivNewLocation + 'px');
+			$('#mplot').css('height', bottomDivNewLocation + 'px');
+		}
+	}
+    return bottomDivNewLocation;
+}
+
+$(document).ready(function() {
+    function toggleMenuFunction() { //could be implemented without using $(document).ready(function() {} but I wanted to open toggle menu on loading of page initially.
+        $(".toggle-menu").toggleClass("active");
+        $('.menu-drawer').toggleClass("open");
+        if ($('.menu-drawer').hasClass("open")) {
+            
+            setTimeout(function() {
+                $('#map-wrapper').css('margin-left', '16vw');
+                $('#map-wrapper').css('width', '83.5vw'); 
+                map.invalidateSize();
+                
+                }, 200); // Delay of 0.2 seconds (200 milliseconds)
+        } else {
+            
+            $('#map-wrapper').css('margin-left', '0vw');
+            $('#map-wrapper').css('width', '100vw'); 
+            map.invalidateSize();
+            
+        }
+        // Adjust the inner contents accordingly
+        erasebokehscripts();
+        loadbokehscripts(); 
+    }
+
+    $(".toggle-menu").click(function() {
+        toggleMenuFunction();
+    });
+    // Trigger the function once when the page loads
+    toggleMenuFunction();
+});
+
+$(window).resize(function() {
+    // Adjust the inner contents accordingly
+    erasebokehscripts();
+    loadbokehscripts();
+});
+// Start loading zip files in the background
+document.addEventListener('DOMContentLoaded', () => {
+preloadPromise = Promise.all([
+    fetch('{% static 'geojson/India_State_Boundary_modified.zip' %}', { keepalive: true }),
+    fetch('{% static 'geojson/output_modified.zip' %}', { keepalive: true }),
+    fetch('{% static 'geojson/India_Basin_modified.zip' %}', { keepalive: true })
+])
+.then(responses => Promise.all(responses.map(response => response.blob())))
+.then(blobs => Promise.all(blobs.map(blob => {
+    return new Promise((resolve, reject) => {
+        JSZip.loadAsync(blob)
+            .then(zip => {
+                // Extract the first file in the zip (assuming there's only one)
+                const geojsonFileName = Object.keys(zip.files)[0];
+                const geojsonFile = zip.file(geojsonFileName);
+                if (geojsonFile) {
+                    geojsonFile.async('string').then(geojsonString => {
+                        const geojson = JSON.parse(geojsonString);
+                        resolve(geojson);
+                    })
+                    .catch(error => reject(error));
+                } else {
+                    reject(new Error(`No GeoJSON file found in zip: ${geojsonFileName}`));
+                }
+            })
+            .catch(error => reject(error));
+    });
+})))
+.then(data => {
+    gstatepreloading = data[0];
+    gdistrictpreloading = data[1];
+    gbasinpreloading = data[2];
+    
+})
+.catch(error => {
+    console.error('Error loading GeoJSON data:', error);
+});
+}); 
+
+/*document.addEventListener('DOMContentLoaded', () => {
+    // Check if the `caches` API is supported
+    if ('caches' in window) {
+      const cacheVersion = 'v1'; // Define cache version
+      const cacheName = `geojson-cache-${cacheVersion}`; // Append version to cache name
+      const urlsToCache = [
+        '{% static 'geojson/India_State_Boundary_modified.zip' %}',
+        '{% static 'geojson/output_modified.zip' %}',
+        '{% static 'geojson/India_Basin_modified.zip' %}',
+      ];
+  
+      const preloadPromise = caches.open(cacheName).then(cache => {
+        // Check and delete old caches if cache version has changed
+        caches.keys().then(cacheNames => {
+          cacheNames.forEach(name => {
+            if (name.startsWith('geojson-cache-') && name !== cacheName) {
+              caches.delete(name);
+            }
+          });
+        });
+  
+        return cache.keys().then(keys => {
+          const cachedResources = keys.map(key => key.url);
+          const resourcesToFetch = urlsToCache.filter(url => !cachedResources.includes(url));
+  
+          const fetchAndUnzip = (url) => {
+            return fetch(url, { keepalive: true })
+              .then(response => response.blob())
+              .then(blob => {
+                return new Promise((resolve, reject) => {
+                  JSZip.loadAsync(blob)
+                    .then(zip => {
+                      const geojsonFileName = Object.keys(zip.files)[0];
+                      const geojsonFile = zip.file(geojsonFileName);
+                      if (geojsonFile) {
+                        geojsonFile.async('string').then(geojsonString => {
+                          const geojson = JSON.parse(geojsonString);
+                          resolve(geojson);
+                        })
+                        .catch(error => reject(error));
+                      } else {
+                        reject(new Error(`No GeoJSON file found in zip: ${geojsonFileName}`));
+                      }
+                    })
+                    .catch(error => reject(error));
+                });
+              });
+          };
+  
+          const cacheGeojson = (url) => {
+            // Cache the fetched GeoJSON file
+            return cache.add(url).then(() => fetchAndUnzip(url));
+          };
+  
+          const getCachedGeojson = (url) => {
+            // Retrieve the GeoJSON file from cache
+            return cache.match(new Request(url, { keepalive: true }))
+              .then(response => response.blob())
+              .then(blob => {
+                return new Promise((resolve, reject) => {
+                  JSZip.loadAsync(blob)
+                    .then(zip => {
+                      const geojsonFileName = Object.keys(zip.files)[0];
+                      const geojsonFile = zip.file(geojsonFileName);
+                      if (geojsonFile) {
+                        geojsonFile.async('string').then(geojsonString => {
+                          const geojson = JSON.parse(geojsonString);
+                          resolve(geojson);
+                        })
+                        .catch(error => reject(error));
+                      } else {
+                        reject(new Error(`No GeoJSON file found in zip: ${geojsonFileName}`));
+                      }
+                    })
+                    .catch(error => reject(error));
+                });
+              });
+          };
+  
+          // Map each URL to either fetch-and-cache or retrieve-from-cache
+          const promises = urlsToCache.map(url => {
+            if (resourcesToFetch.includes(url)) {
+              return cacheGeojson(url);
+            } else {
+              return getCachedGeojson(url);
+            }
+          });
+  
+          return Promise.all(promises);
+        });
+      })
+      .then(data => {
+        // Assign preloaded data to respective variables
+        gstatepreloading = data[0];
+        gdistrictpreloading = data[1];
+        gbasinpreloading = data[2];
+      })
+      .catch(error => {
+        console.error('Error loading GeoJSON data:', error);
+      });
+  
+      window.preloadPromise = preloadPromise; // Define preloadPromise globally to access it later
+    } else {
+      console.error('Caches API is not supported in this browser.');
+    }
+  });   */
+        </script>
+        {%endblock%}
+        
+

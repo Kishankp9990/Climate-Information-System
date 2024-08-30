@@ -1,0 +1,191 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>GeoServer Layer in Leaflet</title>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css" />
+    <style>
+        #map {
+            height: 600px;
+        }
+    </style>
+</head>
+<body>
+    <div id="map"></div>
+    <p>Dist Name: <span id="distName"></span></p>
+    <p>State Name: <span id="stateName"></span></p>
+    <p>Dist Code: <span id="distCode"></span></p>
+    <p>objectid: <span id="objectid"></span></p>
+
+    <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
+    <script>
+        // Initialize the map
+        var map = L.map('map').setView([20, 78], 4); // Centered in the US
+
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            attribution: '© OpenStreetMap contributors'
+        }).addTo(map);
+        
+
+        var f_c= '#FFFF00';
+var all = `<?xml version="1.0" encoding="UTF-8"?>
+<StyledLayerDescriptor xmlns="http://www.opengis.net/sld" xmlns:xlink="http://www.w3.org/1999/xlink" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.opengis.net/sld http://schemas.opengis.net/sld/1.1.0/StyledLayerDescriptor.xsd" xmlns:ogc="http://www.opengis.net/ogc" version="1.1.0" xmlns:se="http://www.opengis.net/se">
+  <NamedLayer>
+    <se:Name>cis:output</se:Name>
+    <UserStyle>
+      <se:Name>output</se:Name>
+      <se:FeatureTypeStyle><se:Rule>
+  <se:Name>High Population</se:Name>
+  <se:Description>
+    <se:Title>High Population</se:Title>
+  </se:Description>
+  <ogc:Filter xmlns:ogc="http://www.opengis.net/ogc">
+    <ogc:PropertyIsGreaterThan>
+      <ogc:PropertyName>totalpopul</ogc:PropertyName>
+      <ogc:Literal>2500000</ogc:Literal>
+    </ogc:PropertyIsGreaterThan>
+  </ogc:Filter>
+  <se:PolygonSymbolizer>
+    <se:Fill>
+      <se:SvgParameter name="fill">#FF0000</se:SvgParameter> <!-- Red -->
+    </se:Fill>
+    <se:Stroke>
+      <se:SvgParameter name="stroke">#232323</se:SvgParameter>
+      <se:SvgParameter name="stroke-width">1</se:SvgParameter>
+      <se:SvgParameter name="stroke-linejoin">bevel</se:SvgParameter>
+    </se:Stroke>
+  </se:PolygonSymbolizer>
+</se:Rule>
+<se:Rule>
+  <se:Name>Medium Population</se:Name>
+  <se:Description>
+    <se:Title>Medium Population</se:Title>
+  </se:Description>
+  <ogc:Filter xmlns:ogc="http://www.opengis.net/ogc">
+    <ogc:And>
+      <ogc:PropertyIsGreaterThan>
+        <ogc:PropertyName>totalpopul</ogc:PropertyName>
+        <ogc:Literal>1000000</ogc:Literal>
+      </ogc:PropertyIsGreaterThan>
+      <ogc:PropertyIsLessThan>
+        <ogc:PropertyName>totalpopul</ogc:PropertyName>
+        <ogc:Literal>2500000</ogc:Literal>
+      </ogc:PropertyIsLessThan>
+    </ogc:And>
+  </ogc:Filter>
+  <se:PolygonSymbolizer>
+    <se:Fill>
+      <se:SvgParameter name="fill">#0000FF</se:SvgParameter> <!-- Blue -->
+    </se:Fill>
+    <se:Stroke>
+      <se:SvgParameter name="stroke">#232323</se:SvgParameter>
+      <se:SvgParameter name="stroke-width">1</se:SvgParameter>
+      <se:SvgParameter name="stroke-linejoin">bevel</se:SvgParameter>
+    </se:Stroke>
+  </se:PolygonSymbolizer>
+</se:Rule>
+<se:Rule>
+  <se:Name>Low Population</se:Name>
+  <se:Description>
+    <se:Title>Low Population</se:Title>
+  </se:Description>
+  <ogc:Filter xmlns:ogc="http://www.opengis.net/ogc">
+    <ogc:PropertyIsLessThan>
+      <ogc:PropertyName>totalpopul</ogc:PropertyName>
+      <ogc:Literal>1000000</ogc:Literal>
+    </ogc:PropertyIsLessThan>
+  </ogc:Filter>
+  <se:PolygonSymbolizer>
+    <se:Fill>
+      <se:SvgParameter name="fill">${f_c}</se:SvgParameter> <!-- Yellow -->
+    </se:Fill>
+    <se:Stroke>
+      <se:SvgParameter name="stroke">#232323</se:SvgParameter>
+      <se:SvgParameter name="stroke-width">1</se:SvgParameter>
+      <se:SvgParameter name="stroke-linejoin">bevel</se:SvgParameter>
+    </se:Stroke>
+  </se:PolygonSymbolizer>
+</se:Rule></se:FeatureTypeStyle>
+</UserStyle>
+</NamedLayer>
+</StyledLayerDescriptor>`;
+
+
+
+        // Add the GeoServer layer as a tile layer
+        var geoserverLayer = L.tileLayer.wms('http://172.18.16.22:8080/geoserver/cis/wms', {
+            layers: 'cis:output', // Layer name
+            format: 'image/png',
+            sld_body:all,
+            transparent: true,
+            attribution: 'Data source: GeoServer'
+        }).addTo(map);
+
+        // Optionally, add other layers or controls here
+        L.control.scale().addTo(map);
+
+
+
+        // Add a click event to retrieve altitude information
+map.on('click', function (e) {
+    var latlng = e.latlng;
+    var url = 'http://172.18.16.22:8080/geoserver/cis/wms' +
+        '?service=WMS&version=1.1.0&request=GetFeatureInfo' +
+        '&layers=cis:output' +
+        '&styles=' +
+        '&bbox=' + map.getBounds().toBBoxString() +
+        '&width=' + map.getSize().x +
+        '&height=' + map.getSize().y +
+        '&srs=EPSG:4326' +
+        '&info_format=text/plain' +
+        '&query_layers=cis:output' +
+        '&x=' + e.containerPoint.x +
+        '&y=' + e.containerPoint.y;
+
+    /// Make a GetFeatureInfo request to GeoServer
+    fetch(url)
+    .then(response => response.text())
+    .then(data => {
+        // Parse the response data
+        console.log(data);
+        var lines = data.trim().split('\n');
+        var featureInfo = {};
+        lines.forEach(line => {
+            var parts = line.split('=');
+            if (parts.length === 2) {
+                var key = parts[0].trim();
+                var value = parts[1].trim();
+                featureInfo[key] = value;
+            }
+        });
+
+        // Store individual pieces of data
+        var the_geom = featureInfo['the_geom'];
+        var objectid = featureInfo['objectid'];
+        var statecode = featureInfo['statecode'];
+        var stateName = featureInfo['statename'];
+        var state_ut = featureInfo['state_ut'];
+        var distCode = featureInfo['distcode'];
+        var distName = featureInfo['distname'];
+        var distCode = featureInfo['distcode'];
+        var distarea = featureInfo['distarea'];
+        var totalpopul = featureInfo['totalpopul'];
+        var totalhh = featureInfo['totalhh'];
+        var totpopmale = featureInfo['totpopmale'];
+        var totpopfema = featureInfo['totpopfema'];
+        var st_areasha = featureInfo['st_areasha'];
+        var st_lengths = featureInfo['st_lengths'];
+        
+        
+
+        // Display the data in HTML
+        document.getElementById('distName').textContent = distName;
+        document.getElementById('stateName').textContent = stateName;
+        document.getElementById('distCode').textContent = distCode;
+        document.getElementById('objectid').textContent = objectid;
+    });
+});
+    </script>
+</body>
+</html>

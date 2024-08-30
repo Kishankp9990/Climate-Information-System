@@ -27,7 +27,7 @@
     // your_script.js
 
 // Set up the map
-var map = L.map('map').setView([0, 0], 2);
+var map = L.map('map').setView([22, 84], 5);
 
 // Add OpenStreetMap as the base layer
 L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
@@ -36,8 +36,8 @@ L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
 
 
 // Add your GeoServer WMS layer
-var nexrad = L.tileLayer.wms("http://localhost:8080/geoserver/wms", {
-  layers: 'himachal:HP_fill',
+var nexrad = L.tileLayer.wms("http://172.18.16.22:8080/geoserver/wms", {
+  layers: 'cis:HP_fill',
   format: 'image/png',
   transparent: true,
   attribution: "testing wms himachal"
@@ -47,16 +47,16 @@ var nexrad = L.tileLayer.wms("http://localhost:8080/geoserver/wms", {
 // Add a click event to retrieve altitude information
 map.on('click', function (e) {
     var latlng = e.latlng;
-    var url = 'http://localhost:8080/geoserver/himachal/wms' +
+    var url = 'http://172.18.16.22:8080/geoserver/cis/wms' +
         '?service=WMS&version=1.1.0&request=GetFeatureInfo' +
-        '&layers=himachal:HP_fill' +
+        '&layers=cis:HP_fill' +
         '&styles=' +
         '&bbox=' + map.getBounds().toBBoxString() +
         '&width=' + map.getSize().x +
         '&height=' + map.getSize().y +
         '&srs=EPSG:4326' +
         '&info_format=text/plain' +
-        '&query_layers=himachal:HP_fill' +
+        '&query_layers=cis:HP_fill' +
         '&x=' + e.containerPoint.x +
         '&y=' + e.containerPoint.y;
 

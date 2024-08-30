@@ -23,7 +23,7 @@
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
             integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo="
             crossorigin=""></script>
-    <script type="text/javascript" src="https://cdn.jsdelivr.net/npm/leaflet-timedimension@1.1.1/dist/leaflet.timedimension.min.js"></script>   
+  
     <script>
         // your_script.js
 
@@ -36,8 +36,8 @@
         }).addTo(map);
 
         // Add your GeoServer WMS layer
-        var nexrad = L.tileLayer.wms("http://localhost:8080/geoserver/wms", {
-          layers: 'learning:output',
+        var nexrad = L.tileLayer.wms("http://172.18.16.22:8080/geoserver/wms", {
+          layers: 'cis:output',
           format: 'image/png',
           transparent: true,
           attribution: "testing wms district"
@@ -46,19 +46,18 @@
 
         map.on('click', function (e) {
             var latlng = e.latlng;
-            var url = 'http://localhost:8080/geoserver/learning/wms' +
+            var url = 'http://172.18.16.22:8080/geoserver/cis/wms' +
                 '?service=WMS&version=1.1.0&request=GetFeatureInfo' +
-                '&layers=learning:output' +
+                '&layers=cis:output' +
                 '&styles=' +
                 '&bbox=' + map.getBounds().toBBoxString() +
                 '&width=' + map.getSize().x +
                 '&height=' + map.getSize().y +
                 '&srs=EPSG:4326' +
                 '&info_format=text/plain' +
-                '&query_layers=learning:output' +
-                '&x=' + e.containerPoint.x +
-                '&y=' + e.containerPoint.y;
-
+                '&query_layers=cis:output' +
+                '&x=' + Math.floor(e.containerPoint.x) +
+                '&y=' + Math.floor(e.containerPoint.y);
             // Make a GetFeatureInfo request to GeoServer
             fetch(url)
                 .then(response => response.text())
@@ -77,13 +76,16 @@
 
                     // Store individual pieces of data
                     var distName = featureInfo['distname'];
-                    var dateToQuery = '25-04-1990'; // Replace with your desired date
-                    var columnName = distName; // Replace with the column variable you want to fetch
+                    var objectid = featureInfo['objectid'];
+                    var dateToQuery = '1990-04-25'; // Replace with your desired date
+                    //var columnName = distName; // Replace with the column variable you want to fetch
+                    var columnName = objectid;
 
                     // Make AJAX request to fetch data from Django view
                     var xhr = new XMLHttpRequest();
 
-                    xhr.open('GET', "{% url 'aSync' %}?date_to_query=" + dateToQuery + "&column_name=" + columnName,true);
+                    //xhr.open('GET', "{% url 'aSync' %}?date_to_query=" + dateToQuery + "&column_name=" + columnName,true);
+                    xhr.open('GET', "{% url 'aSync' %}?date_to_query=" + dateToQuery + "&object_id=" + objectid,true);
 
                     
                     xhr.onload= function(){

@@ -1,0 +1,98 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Download CSV Data</title>
+</head>
+<body>
+    <h1>Download CSV Data</h1>
+    <form id="csvForm">
+        <label>
+            <input type="checkbox" name="csv" value="observed"> Observed Data
+        </label><br>
+        <label>
+            <input type="checkbox" name="csv" value="hist"> Historical Data
+        </label><br>
+        <label>
+            <input type="checkbox" name="csv" value="ssp245_near"> SSP245 near
+        </label><br>
+        <label>
+            <input type="checkbox" name="csv" value="ssp245_mid"> SSP245 mid
+        </label><br>
+        <label>
+            <input type="checkbox" name="csv" value="ssp245_far"> SSP245 far
+        </label><br>
+        <label>
+            <input type="checkbox" name="csv" value="ssp585_near"> SSP585 near
+        </label><br>
+        <label>
+            <input type="checkbox" name="csv" value="ssp585_mid"> SSP585 mid
+        </label><br>
+        <label>
+            <input type="checkbox" name="csv" value="ssp585_far"> SSP585 far
+        </label><br>
+        <button type="button" onclick="downloadSelected()">Download Selected</button>
+    </form>
+
+    <script>
+        const csvData = {
+            observed: `{{ observed_csv_data|escapejs }}`,
+            hist: `{{ hist_csv_data|escapejs }}`,
+            ssp245_near: `{{ ssp245_csv_data_near|escapejs }}`,
+            ssp245_mid: `{{ ssp245_csv_data_mid|escapejs }}`,
+            ssp245_far: `{{ ssp245_csv_data_far|escapejs }}`,
+            ssp585_near: `{{ ssp585_csv_data_near|escapejs }}`,
+            ssp585_mid: `{{ ssp585_csv_data_mid|escapejs }}`,
+            ssp585_far: `{{ ssp585_csv_data_far|escapejs }}`
+        };
+
+        function downloadCSV(csv, filename) {
+            let csvFile;
+            let downloadLink;
+
+            csvFile = new Blob([csv], { type: "text/csv" });
+
+            downloadLink = document.createElement("a");
+            downloadLink.download = filename;
+
+            downloadLink.href = window.URL.createObjectURL(csvFile);
+            downloadLink.style.display = "none";
+
+            document.body.appendChild(downloadLink);
+
+            downloadLink.click();
+        }
+
+        function mergeCSV(dataArray) {
+            // Split each CSV into rows and remove headers after the first one
+            let allRows = dataArray.map(data => data.split('\n'));
+            let headers = allRows[0][0];
+            let mergedRows = allRows.reduce((acc, rows, index) => {
+                if (index === 0) {
+                    return acc.concat(rows);
+                } else {
+                    return acc.concat(rows.slice(1)); // Remove header row from subsequent CSVs
+                }
+            }, []);
+
+            // Join all rows back into a single string
+            return [headers].concat(mergedRows.slice(1)).join('\n');
+        }
+
+        function downloadSelected() {
+            const form = document.getElementById('csvForm');
+            const checkboxes = form.querySelectorAll('input[name="csv"]:checked');
+
+            if (checkboxes.length === 0) {
+                alert('Please select at least one option.');
+                return;
+            }
+
+            const selectedData = Array.from(checkboxes).map(checkbox => csvData[checkbox.value]);
+            const mergedCSV = mergeCSV(selectedData);
+            downloadCSV(mergedCSV, 'merged_data.csv');
+        }
+    </script>
+</body>
+</html>
