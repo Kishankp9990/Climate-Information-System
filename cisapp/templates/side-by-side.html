@@ -1102,13 +1102,13 @@ async function fetchwmsdata(temp) {
             .then(html => {
                 firstclick();
                 // Extract the text content of the div with id "key"
-                /*const parser = new DOMParser();
+                const parser = new DOMParser();
                 const doc = parser.parseFromString(html, 'text/html');
                 const keyDiv = doc.querySelector('#key');
                 var key = keyDiv.textContent;
                 console.log(key);
-                if(gSessionKey==key){
-                    console.log("session key matched");*/
+                gSessionKey=key
+                
                 ghtml=html;
                 /*...................do not delete this..........................................................
                 document.getElementById('mplot').innerHTML = html;
@@ -1775,8 +1775,9 @@ document.getElementById('download-btn').addEventListener('click', function() {
                 if (data.error) {
                     alert(data.error);
                 } else {
+                    console.log(data.data,"hii");
                     // Handle the CSV data, e.g., download it
-                    downloadCSV(data.Data, 'Data.csv');
+                    downloadCSV(data.data, 'Data.csv');
                 }
             })
             .catch(error => console.error('Error:', error));

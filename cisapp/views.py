@@ -34,6 +34,11 @@ import shapefile
 import json
 from django.http import JsonResponse
 
+from .tasks import process_dataframes_task
+from .tasks import process_csv_task
+import dill
+from django.contrib.sessions.models import Session
+
 
 def location_wise(request):
     return render(request,'location_wise.html')
@@ -174,12 +179,23 @@ def dl(request):
 
 #.................from here real app view starts.......................................................................................
 def download_csv(request):
+    
     key = request.GET.get('key', None)
-    context_csv = request.session.get(key, None)
-    if context_csv:
-        return JsonResponse(context_csv)
-    else:
-        return JsonResponse({'error': 'No data available'}, status=400)
+    
+    if not key:
+        return JsonResponse({'error': 'No key provided'}, status=400)
+    
+    try:
+        # Retrieve the session using the key
+        session = Session.objects.get(session_key=key)
+        session_data = session.get_decoded()
+        # Check if the processed data is available in the session
+        context_csv = session_data.get('processed_data', None)
+        
+        return JsonResponse({'data': context_csv})
+    
+    except Session.DoesNotExist:
+        return JsonResponse({'error': 'Session does not exist'}, status=400)
 #1.
 def mergeppt(df_hist, df_imd, merged_ssp245,merged_ssp585):
     # Rename the columns to indicate their source before merging
@@ -268,16 +284,6 @@ def ppt_view_netcdf_annual(request):
     ds_ssp585_far = xr.open_dataset(netcdf_file_path_ssp585_far).sel(lat=lat, lon=lng, method='nearest').pr.drop_vars(['lat', 'lon'])
 
     
-    # Convert to DataFrames
-    df_imd = ds_imd.to_dataframe()
-    df_hist = ds_hist.to_dataframe()
-    df_ssp245_near = ds_ssp245_near.to_dataframe()
-    df_ssp245_mid = ds_ssp245_mid.to_dataframe()
-    df_ssp245_far = ds_ssp245_far.to_dataframe()
-    df_ssp585_near = ds_ssp585_near.to_dataframe()
-    df_ssp585_mid = ds_ssp585_mid.to_dataframe()
-    df_ssp585_far = ds_ssp585_far.to_dataframe()
-    
     # Create a Bokeh figure
     # p = figure(title="Time Series Plot", x_axis_label='Date', y_axis_label='PPT', x_axis_type='datetime', width=700, margin=(0,0, 0, -265))
     #p = figure(title="Time Series Plot", x_axis_label='Date', y_axis_label='PPT', x_axis_type='datetime', width=1600,height=400,sizing_mode='scale_height',toolbar_location=None)
@@ -290,14 +296,16 @@ def ppt_view_netcdf_annual(request):
     curdoc().theme=theme
     curdoc().add_root(p)
     
-    merged_ssp245 = pd.concat([df_ssp245_near, df_ssp245_mid, df_ssp245_far])
-    merged_ssp585 = pd.concat([df_ssp585_near, df_ssp585_mid, df_ssp585_far])
+    ds_ssp245 = xr.concat([ds_ssp245_near, ds_ssp245_mid, ds_ssp245_far], dim='time')
 
+    # Merge SSP585 datasets
+    ds_ssp585 = xr.concat([ds_ssp585_near, ds_ssp585_mid, ds_ssp585_far], dim='time')
+    
     # Plot the time series data
-    observed=p.line(df_imd.index, df_imd['pr'], legend_label='imd',color='red', line_width=4,visible=True)
-    hist_line=p.line(df_hist.index, df_hist['pr'], legend_label='hist', color='orange', line_width=2,visible=True)
-    ssp245=p.line(merged_ssp245.index, merged_ssp245['pr'], legend_label='ssp245',  color='green', line_width=2,visible=True)
-    ssp585=p.line(merged_ssp585.index, merged_ssp585['pr'], legend_label='ssp585',  color='grey', line_width=2,visible=True)
+    observed=p.line(ds_imd.time, ds_imd.values, legend_label='imd',color='red', line_width=4,visible=True)
+    hist_line=p.line(ds_hist.time, ds_hist.values, legend_label='hist', color='orange', line_width=2,visible=True)
+    ssp245=p.line(ds_ssp245.time, ds_ssp245.values, legend_label='ssp245',  color='green', line_width=2,visible=True)
+    ssp585=p.line(ds_ssp585.time, ds_ssp585.values, legend_label='ssp585',  color='grey', line_width=2,visible=True)
 
 
     # Create toggle buttons
@@ -363,22 +371,27 @@ def ppt_view_netcdf_annual(request):
 
     combined_script = "".join(script)
     combined_div = "".join(div)
+    
+    request.session.save()
 
-    df_hist.index = pd.to_datetime(df_hist.index)  # Assuming your index is already in datetime format, otherwise, convert it
-    
-    
+    # Trigger the Celery task to process the time-consuming task
+    session_key =request.session.session_key
     # Merge and store the result in the session
-    context_csv = mergeppt(df_hist, df_imd, merged_ssp245,merged_ssp585)
-    request.session['ppt_view_netcdf_annual'] = context_csv
-    # Pass the CSV data along with the script and div to the template
     context = {
         'script': combined_script,
         'div': combined_div,
-        'key':'ppt_view_netcdf_annual'
+        'key': session_key
     }
+    response = render(request, 'dashboard.html', context)
+
     
-    
-    return render(request, 'dashboard.html', context)
+    df_hist_pickle = dill.dumps(ds_hist)
+    df_imd_pickle = dill.dumps(ds_imd)
+    merged_ssp245_pickle = dill.dumps(ds_ssp245)
+    merged_ssp585_pickle = dill.dumps(ds_ssp585)
+    process_dataframes_task.delay(df_hist_pickle, df_imd_pickle, merged_ssp245_pickle, merged_ssp585_pickle, session_key)
+
+    return response
 #2.
 def ppt_view_netcdf_monthly(request):
     lat = request.GET.get('lat', None)
@@ -399,10 +412,10 @@ def ppt_view_netcdf_monthly(request):
     ds_ssp585 =xr.open_dataset(netcdf_file_path_ssp585).sel(lat=lat, lon=lng, method='nearest').pr.drop_vars(['lat', 'lon'])
 
     # Convert to DataFrames
-    df_imd = ds_imd.to_dataframe()
-    df_hist = ds_hist.to_dataframe()
-    df_ssp245 = ds_ssp245.to_dataframe()
-    df_ssp585 = ds_ssp585.to_dataframe()
+    # df_imd = ds_imd.to_dataframe()
+    # df_hist = ds_hist.to_dataframe()
+    # df_ssp245 = ds_ssp245.to_dataframe()
+    # df_ssp585 = ds_ssp585.to_dataframe()
     
     
     # Create a Bokeh figure
@@ -419,10 +432,10 @@ def ppt_view_netcdf_monthly(request):
 
 
     # Plot the time series data
-    observed=p.line(df_imd.index, df_imd['pr'], legend_label='imd',color='red', line_width=4,visible=True)
-    hist_line=p.line(df_hist.index, df_hist['pr'], legend_label='hist', color='orange', line_width=2,visible=True)
-    ssp245=p.line(df_ssp245.index, df_ssp245['pr'], legend_label='ssp245',  color='green', line_width=2,visible=True)
-    ssp585=p.line(df_ssp585.index, df_ssp585['pr'], legend_label='ssp585',  color='grey', line_width=2,visible=True)
+    observed=p.line(ds_imd.time, ds_imd.values, legend_label='imd',color='red', line_width=4,visible=True)
+    hist_line=p.line(ds_hist.time, ds_hist.values, legend_label='hist', color='orange', line_width=2,visible=True)
+    ssp245=p.line(ds_ssp245.time, ds_ssp245.values, legend_label='ssp245',  color='green', line_width=2,visible=True)
+    ssp585=p.line(ds_ssp585.time, ds_ssp585.values, legend_label='ssp585',  color='grey', line_width=2,visible=True)
 
 
     # Create toggle buttons
@@ -488,22 +501,27 @@ def ppt_view_netcdf_monthly(request):
 
     combined_script = "".join(script)
     combined_div = "".join(div)
-
-    df_hist.index = pd.to_datetime(df_hist.index)  # Assuming your index is already in datetime format, otherwise, convert it
-
     
+    request.session.save()
+
+    # Trigger the Celery task to process the time-consuming task
+    session_key =request.session.session_key
     # Merge and store the result in the session
-    context_csv = mergeppt(df_hist, df_imd, df_ssp245,df_ssp585)
-    request.session['ppt_view_netcdf_monthly'] = context_csv
-    print(context_csv)
-    # Pass the CSV data along with the script and div to the template
     context = {
         'script': combined_script,
         'div': combined_div,
-        'key':'ppt_view_netcdf_monthly'
+        'key': session_key
     }
+    response = render(request, 'dashboard.html', context)
+
     
-    return render(request, 'dashboard.html', context)
+    df_hist_pickle = dill.dumps(ds_hist)
+    df_imd_pickle = dill.dumps(ds_imd)
+    merged_ssp245_pickle = dill.dumps(ds_ssp245)
+    merged_ssp585_pickle = dill.dumps(ds_ssp585)
+    process_dataframes_task.delay(df_hist_pickle, df_imd_pickle, merged_ssp245_pickle, merged_ssp585_pickle, session_key)
+
+    return response
 #3.
 def ppt_view_netcdf_daily(request):
     lat = request.GET.get('lat', None)
@@ -524,10 +542,10 @@ def ppt_view_netcdf_daily(request):
     ds_ssp585 =xr.open_dataset(netcdf_file_path_ssp585).sel(lat=lat, lon=lng, method='nearest').pr.drop_vars(['lat', 'lon'])
     
     # Convert to DataFrames
-    df_imd = ds_imd.to_dataframe()
-    df_hist = ds_hist.to_dataframe()
-    df_ssp245 = ds_ssp245.to_dataframe()
-    df_ssp585 = ds_ssp585.to_dataframe()
+    # df_imd = ds_imd.to_dataframe()
+    # df_hist = ds_hist.to_dataframe()
+    # df_ssp245 = ds_ssp245.to_dataframe()
+    # df_ssp585 = ds_ssp585.to_dataframe()
 
     # Create a Bokeh figure
     # p = figure(title="Time Series Plot", x_axis_label='Date', y_axis_label='PPT', x_axis_type='datetime', width=700, margin=(0,0, 0, -265))
@@ -543,10 +561,10 @@ def ppt_view_netcdf_daily(request):
     
 
     # Plot the time series data
-    observed=p.line(df_imd.index, df_imd['pr'], legend_label='imd',color='red', line_width=4,visible=True)
-    hist_line=p.line(df_hist.index, df_hist['pr'], legend_label='hist', color='orange', line_width=2,visible=True)
-    ssp245=p.line(df_ssp245.index, df_ssp245['pr'], legend_label='ssp245',  color='green', line_width=2,visible=True)
-    ssp585=p.line(df_ssp585.index, df_ssp585['pr'], legend_label='ssp585',  color='grey', line_width=2,visible=True)
+    observed=p.line(ds_imd.time, ds_imd.values, legend_label='imd',color='red', line_width=4,visible=True)
+    hist_line=p.line(ds_hist.time, ds_hist.values, legend_label='hist', color='orange', line_width=2,visible=True)
+    ssp245=p.line(ds_ssp245.time, ds_ssp245.values, legend_label='ssp245',  color='green', line_width=2,visible=True)
+    ssp585=p.line(ds_ssp585.time, ds_ssp585.values, legend_label='ssp585',  color='grey', line_width=2,visible=True)
 
 
     # Create toggle buttons
@@ -612,21 +630,27 @@ def ppt_view_netcdf_daily(request):
 
     combined_script = "".join(script)
     combined_div = "".join(div)
-
-    df_hist.index = pd.to_datetime(df_hist.index)  # Assuming your index is already in datetime format, otherwise, convert it
-
     
+    request.session.save()
+
+    # Trigger the Celery task to process the time-consuming task
+    session_key =request.session.session_key
     # Merge and store the result in the session
-    context_csv = mergeppt(df_hist, df_imd, df_ssp245,df_ssp585)
-    request.session['ppt_view_netcdf_daily'] = context_csv
-    # Pass the CSV data along with the script and div to the template
     context = {
         'script': combined_script,
         'div': combined_div,
-        'key':'ppt_view_netcdf_daily'
+        'key': session_key
     }
+    response = render(request, 'dashboard.html', context)
+
     
-    return render(request, 'dashboard.html', context)
+    df_hist_pickle = dill.dumps(ds_hist)
+    df_imd_pickle = dill.dumps(ds_imd)
+    merged_ssp245_pickle = dill.dumps(ds_ssp245)
+    merged_ssp585_pickle = dill.dumps(ds_ssp585)
+    process_dataframes_task.delay(df_hist_pickle, df_imd_pickle, merged_ssp245_pickle, merged_ssp585_pickle, session_key)
+
+    return response
 #4.
 def ppt_view_csv_daily_district(request):
     objectid = request.GET.get('objectid', None)
@@ -654,13 +678,13 @@ def ppt_view_csv_daily_district(request):
     
     
     theme_path = os.path.join(os.path.dirname(__file__), 'static/yml/transparent_theme.yml')
-    print(theme_path)
+    
     theme = Theme(filename=theme_path)
     curdoc().theme=theme
     curdoc().add_root(p)
     
 
-
+    
     # Plot the time series data
     observed=p.line(df_imd.index, df_imd[[objectid]], legend_label='imd',color='red', line_width=4,visible=True)
     hist_line=p.line(df_hist.index, df_hist[[objectid]], legend_label='hist', color='orange', line_width=2,visible=True)
@@ -746,26 +770,26 @@ def ppt_view_csv_daily_district(request):
     df_ssp245 = df_ssp245.rename(columns={objectid: 'ssp245'})
     df_ssp585 = df_ssp585.rename(columns={objectid: 'ssp585'})
     
-# Merge all DataFrames on their common date-time index
-    df_hist_imd = df_hist.join([df_imd], how='outer')
-    df_ssp245_ssp585 = df_ssp245.join([ df_ssp585], how='outer')
-    # Merge the DataFrames by concatenating them along the rows (time index)
-    merged_df = pd.concat([df_hist_imd, df_ssp245_ssp585])
-    
-    Data=merged_df.to_csv()
-    context_csv = {
-        'Data':Data
-    }
-    request.session['ppt_view_csv_daily_district'] = context_csv
-    # Pass the CSV data along with the script and div to the template
+    request.session.save()
+
+    # Trigger the Celery task to process the time-consuming task
+    session_key =request.session.session_key
+    # Merge and store the result in the session
     context = {
         'script': combined_script,
         'div': combined_div,
-       'key':'ppt_view_csv_daily_district'
+        'key': session_key
     }
+    response = render(request, 'dashboard.html', context)
 
     
-    return render(request, 'dashboard.html', context)
+    df_hist_pickle = dill.dumps(df_hist)
+    df_imd_pickle = dill.dumps(df_imd)
+    merged_ssp245_pickle = dill.dumps(df_ssp245)
+    merged_ssp585_pickle = dill.dumps(df_ssp585)
+    process_csv_task.delay(df_hist_pickle, df_imd_pickle, merged_ssp245_pickle, merged_ssp585_pickle, session_key)
+
+    return response
 #5.
 def ppt_view_csv_monthly_district(request):
     objectid = request.GET.get('objectid', None)
@@ -792,7 +816,7 @@ def ppt_view_csv_monthly_district(request):
     
     
     theme_path = os.path.join(os.path.dirname(__file__), 'static/yml/transparent_theme.yml')
-    print(theme_path)
+    
     theme = Theme(filename=theme_path)
     curdoc().theme=theme
     curdoc().add_root(p)
@@ -882,26 +906,26 @@ def ppt_view_csv_monthly_district(request):
     df_imd = df_imd.rename(columns={objectid: 'observed'})
     df_ssp245 = df_ssp245.rename(columns={objectid: 'ssp245'})
     df_ssp585 = df_ssp585.rename(columns={objectid: 'ssp585'})
-    
-# Merge all DataFrames on their common date-time index
-    df_hist_imd = df_hist.join([df_imd], how='outer')
-    df_ssp245_ssp585 = df_ssp245.join([ df_ssp585], how='outer')
-    # Merge the DataFrames by concatenating them along the rows (time index)
-    merged_df = pd.concat([df_hist_imd, df_ssp245_ssp585])
-    
-    Data=merged_df.to_csv()
-    context_csv = {
-        'Data':Data
-    }
-    request.session['ppt_view_csv_monthly_district'] = context_csv
-    # Pass the CSV data along with the script and div to the template
+    request.session.save()
+
+    # Trigger the Celery task to process the time-consuming task
+    session_key =request.session.session_key
+    # Merge and store the result in the session
     context = {
         'script': combined_script,
         'div': combined_div,
-        'key':'ppt_view_csv_monthly_district'
+        'key': session_key
     }
+    response = render(request, 'dashboard.html', context)
 
-    return render(request,'dashboard.html',context)
+    
+    df_hist_pickle = dill.dumps(df_hist)
+    df_imd_pickle = dill.dumps(df_imd)
+    merged_ssp245_pickle = dill.dumps(df_ssp245)
+    merged_ssp585_pickle = dill.dumps(df_ssp585)
+    process_csv_task.delay(df_hist_pickle, df_imd_pickle, merged_ssp245_pickle, merged_ssp585_pickle, session_key)
+
+    return response
 #6.
 def ppt_view_csv_annual_district(request):
     objectid = request.GET.get('objectid', None)
@@ -928,7 +952,7 @@ def ppt_view_csv_annual_district(request):
     
     
     theme_path = os.path.join(os.path.dirname(__file__), 'static/yml/transparent_theme.yml')
-    print(theme_path)
+    
     theme = Theme(filename=theme_path)
     curdoc().theme=theme
     curdoc().add_root(p)
@@ -1019,25 +1043,26 @@ def ppt_view_csv_annual_district(request):
     df_imd = df_imd.rename(columns={objectid: 'observed'})
     df_ssp245 = df_ssp245.rename(columns={objectid: 'ssp245'})
     df_ssp585 = df_ssp585.rename(columns={objectid: 'ssp585'})
-    print(df_hist)
-# Merge all DataFrames on their common date-time index
-    df_hist_imd = df_hist.join([df_imd], how='outer')
-    df_ssp245_ssp585 = df_ssp245.join([ df_ssp585], how='outer')
-    # Merge the DataFrames by concatenating them along the rows (time index)
-    merged_df = pd.concat([df_hist_imd, df_ssp245_ssp585])
-    
-    Data=merged_df.to_csv()
-    context_csv = {
-        'Data':Data
-    }
-    request.session['ppt_view_csv_annual_district'] = context_csv
-    # Pass the CSV data along with the script and div to the template
+    request.session.save()
+
+    # Trigger the Celery task to process the time-consuming task
+    session_key =request.session.session_key
+    # Merge and store the result in the session
     context = {
         'script': combined_script,
         'div': combined_div,
-        'key':'ppt_view_csv_annual_district'
+        'key': session_key
     }
-    return render(request,'dashboard.html',context)
+    response = render(request, 'dashboard.html', context)
+
+    
+    df_hist_pickle = dill.dumps(df_hist)
+    df_imd_pickle = dill.dumps(df_imd)
+    merged_ssp245_pickle = dill.dumps(df_ssp245)
+    merged_ssp585_pickle = dill.dumps(df_ssp585)
+    process_csv_task.delay(df_hist_pickle, df_imd_pickle, merged_ssp245_pickle, merged_ssp585_pickle, session_key)
+
+    return response
 #7.
 def ppt_view_csv_daily_state(request):
     objectid = request.GET.get('objectid', None)
@@ -1065,7 +1090,7 @@ def ppt_view_csv_daily_state(request):
     
     
     theme_path = os.path.join(os.path.dirname(__file__), 'static/yml/transparent_theme.yml')
-    print(theme_path)
+    
     theme = Theme(filename=theme_path)
     curdoc().theme=theme
     curdoc().add_root(p)
@@ -1156,25 +1181,26 @@ def ppt_view_csv_daily_state(request):
     df_imd = df_imd.rename(columns={objectid: 'observed'})
     df_ssp245 = df_ssp245.rename(columns={objectid: 'ssp245'})
     df_ssp585 = df_ssp585.rename(columns={objectid: 'ssp585'})
-    
-# Merge all DataFrames on their common date-time index
-    df_hist_imd = df_hist.join([df_imd], how='outer')
-    df_ssp245_ssp585 = df_ssp245.join([ df_ssp585], how='outer')
-    # Merge the DataFrames by concatenating them along the rows (time index)
-    merged_df = pd.concat([df_hist_imd, df_ssp245_ssp585])
-    
-    Data=merged_df.to_csv()
-    context_csv = {
-        'Data':Data
-    }
-    request.session['ppt_view_csv_daily_state'] = context_csv
-    # Pass the CSV data along with the script and div to the template
+    request.session.save()
+
+    # Trigger the Celery task to process the time-consuming task
+    session_key =request.session.session_key
+    # Merge and store the result in the session
     context = {
         'script': combined_script,
         'div': combined_div,
-        'key':'ppt_view_csv_daily_state'
+        'key': session_key
     }
-    return render(request, 'dashboard.html', context)
+    response = render(request, 'dashboard.html', context)
+
+    
+    df_hist_pickle = dill.dumps(df_hist)
+    df_imd_pickle = dill.dumps(df_imd)
+    merged_ssp245_pickle = dill.dumps(df_ssp245)
+    merged_ssp585_pickle = dill.dumps(df_ssp585)
+    process_csv_task.delay(df_hist_pickle, df_imd_pickle, merged_ssp245_pickle, merged_ssp585_pickle, session_key)
+
+    return response
 #8.
 def ppt_view_csv_monthly_state(request):
     objectid = request.GET.get('objectid', None)
@@ -1200,7 +1226,7 @@ def ppt_view_csv_monthly_state(request):
     
     
     theme_path = os.path.join(os.path.dirname(__file__), 'static/yml/transparent_theme.yml')
-    print(theme_path)
+    
     theme = Theme(filename=theme_path)
     curdoc().theme=theme
     curdoc().add_root(p)
@@ -1290,25 +1316,26 @@ def ppt_view_csv_monthly_state(request):
     df_imd = df_imd.rename(columns={objectid: 'observed'})
     df_ssp245 = df_ssp245.rename(columns={objectid: 'ssp245'})
     df_ssp585 = df_ssp585.rename(columns={objectid: 'ssp585'})
-    
-# Merge all DataFrames on their common date-time index
-    df_hist_imd = df_hist.join([df_imd], how='outer')
-    df_ssp245_ssp585 = df_ssp245.join([ df_ssp585], how='outer')
-    # Merge the DataFrames by concatenating them along the rows (time index)
-    merged_df = pd.concat([df_hist_imd, df_ssp245_ssp585])
-    
-    Data=merged_df.to_csv()
-    context_csv = {
-        'Data':Data
-    }
-    request.session['ppt_view_csv_monthly_state'] = context_csv
-    # Pass the CSV data along with the script and div to the template
+    request.session.save()
+
+    # Trigger the Celery task to process the time-consuming task
+    session_key =request.session.session_key
+    # Merge and store the result in the session
     context = {
         'script': combined_script,
         'div': combined_div,
-        'key':'ppt_view_csv_monthly_state'
+        'key': session_key
     }
-    return render(request, 'dashboard.html', context)
+    response = render(request, 'dashboard.html', context)
+
+    
+    df_hist_pickle = dill.dumps(df_hist)
+    df_imd_pickle = dill.dumps(df_imd)
+    merged_ssp245_pickle = dill.dumps(df_ssp245)
+    merged_ssp585_pickle = dill.dumps(df_ssp585)
+    process_csv_task.delay(df_hist_pickle, df_imd_pickle, merged_ssp245_pickle, merged_ssp585_pickle, session_key)
+
+    return response
 #9.
 def ppt_view_csv_annual_state(request):
     objectid = request.GET.get('objectid', None)
@@ -1334,7 +1361,7 @@ def ppt_view_csv_annual_state(request):
     
     
     theme_path = os.path.join(os.path.dirname(__file__), 'static/yml/transparent_theme.yml')
-    print(theme_path)
+    
     theme = Theme(filename=theme_path)
     curdoc().theme=theme
     curdoc().add_root(p)
@@ -1424,26 +1451,26 @@ def ppt_view_csv_annual_state(request):
     df_imd = df_imd.rename(columns={objectid: 'observed'})
     df_ssp245 = df_ssp245.rename(columns={objectid: 'ssp245'})
     df_ssp585 = df_ssp585.rename(columns={objectid: 'ssp585'})
-    # Merge all DataFrames on their common date-time index
-    df_hist_imd = df_hist.join([df_imd], how='outer')
-    df_ssp245_ssp585 = df_ssp245.join([ df_ssp585], how='outer')
-    
-    
-    # Merge the DataFrames by concatenating them along the rows (time index)
-    merged_df = pd.concat([df_hist_imd, df_ssp245_ssp585])
-    
-    Data=merged_df.to_csv()
-    context_csv = {
-        'Data':Data
-    }
-    request.session['ppt_view_csv_annual_state'] = context_csv
-    # Pass the CSV data along with the script and div to the template
+    request.session.save()
+
+    # Trigger the Celery task to process the time-consuming task
+    session_key =request.session.session_key
+    # Merge and store the result in the session
     context = {
         'script': combined_script,
         'div': combined_div,
-        'key':'ppt_view_csv_annual_state'
+        'key': session_key
     }
-    return render(request, 'dashboard.html', context)
+    response = render(request, 'dashboard.html', context)
+
+    
+    df_hist_pickle = dill.dumps(df_hist)
+    df_imd_pickle = dill.dumps(df_imd)
+    merged_ssp245_pickle = dill.dumps(df_ssp245)
+    merged_ssp585_pickle = dill.dumps(df_ssp585)
+    process_csv_task.delay(df_hist_pickle, df_imd_pickle, merged_ssp245_pickle, merged_ssp585_pickle, session_key)
+
+    return response
 #10.
 def ppt_view_csv_daily_basin(request):
     objectid = request.GET.get('objectid', None)
@@ -1471,7 +1498,7 @@ def ppt_view_csv_daily_basin(request):
     
     
     theme_path = os.path.join(os.path.dirname(__file__), 'static/yml/transparent_theme.yml')
-    print(theme_path)
+    
     theme = Theme(filename=theme_path)
     curdoc().theme=theme
     curdoc().add_root(p)
@@ -1561,25 +1588,26 @@ def ppt_view_csv_daily_basin(request):
     df_imd = df_imd.rename(columns={objectid: 'observed'})
     df_ssp245 = df_ssp245.rename(columns={objectid: 'ssp245'})
     df_ssp585 = df_ssp585.rename(columns={objectid: 'ssp585'})
-    print(df_hist)
-# Merge all DataFrames on their common date-time index
-    df_hist_imd = df_hist.join([df_imd], how='outer')
-    df_ssp245_ssp585 = df_ssp245.join([ df_ssp585], how='outer')
-    # Merge the DataFrames by concatenating them along the rows (time index)
-    merged_df = pd.concat([df_hist_imd, df_ssp245_ssp585])
-    
-    Data=merged_df.to_csv()
-    context_csv = {
-        'Data':Data
-    }
-    request.session['ppt_view_csv_daily_basin'] = context_csv
-    # Pass the CSV data along with the script and div to the template
+    request.session.save()
+
+    # Trigger the Celery task to process the time-consuming task
+    session_key =request.session.session_key
+    # Merge and store the result in the session
     context = {
         'script': combined_script,
         'div': combined_div,
-        'key':'ppt_view_csv_daily_basin'
+        'key': session_key
     }
-    return render(request, 'dashboard.html', context)
+    response = render(request, 'dashboard.html', context)
+
+    
+    df_hist_pickle = dill.dumps(df_hist)
+    df_imd_pickle = dill.dumps(df_imd)
+    merged_ssp245_pickle = dill.dumps(df_ssp245)
+    merged_ssp585_pickle = dill.dumps(df_ssp585)
+    process_csv_task.delay(df_hist_pickle, df_imd_pickle, merged_ssp245_pickle, merged_ssp585_pickle, session_key)
+
+    return response
 #11.
 def ppt_view_csv_monthly_basin(request):
     objectid = request.GET.get('objectid', None)
@@ -1604,7 +1632,7 @@ def ppt_view_csv_monthly_basin(request):
     
     
     theme_path = os.path.join(os.path.dirname(__file__), 'static/yml/transparent_theme.yml')
-    print(theme_path)
+    
     theme = Theme(filename=theme_path)
     curdoc().theme=theme
     curdoc().add_root(p)
@@ -1694,25 +1722,26 @@ def ppt_view_csv_monthly_basin(request):
     df_imd = df_imd.rename(columns={objectid: 'observed'})
     df_ssp245 = df_ssp245.rename(columns={objectid: 'ssp245'})
     df_ssp585 = df_ssp585.rename(columns={objectid: 'ssp585'})
-    print(df_hist)
-# Merge all DataFrames on their common date-time index
-    df_hist_imd = df_hist.join([df_imd], how='outer')
-    df_ssp245_ssp585 = df_ssp245.join([ df_ssp585], how='outer')
-    # Merge the DataFrames by concatenating them along the rows (time index)
-    merged_df = pd.concat([df_hist_imd, df_ssp245_ssp585])
-    
-    Data=merged_df.to_csv()
-    context_csv = {
-        'Data':Data
-    }
-    request.session['ppt_view_csv_monthly_basin'] = context_csv
-    # Pass the CSV data along with the script and div to the template
+    request.session.save()
+
+    # Trigger the Celery task to process the time-consuming task
+    session_key =request.session.session_key
+    # Merge and store the result in the session
     context = {
         'script': combined_script,
         'div': combined_div,
-        'key':'ppt_view_csv_monthly_basin'
+        'key': session_key
     }
-    return render(request, 'dashboard.html', context)
+    response = render(request, 'dashboard.html', context)
+
+    
+    df_hist_pickle = dill.dumps(df_hist)
+    df_imd_pickle = dill.dumps(df_imd)
+    merged_ssp245_pickle = dill.dumps(df_ssp245)
+    merged_ssp585_pickle = dill.dumps(df_ssp585)
+    process_csv_task.delay(df_hist_pickle, df_imd_pickle, merged_ssp245_pickle, merged_ssp585_pickle, session_key)
+
+    return response
 #12.
 def ppt_view_csv_annual_basin(request):
     objectid = request.GET.get('objectid', None)
@@ -1738,7 +1767,7 @@ def ppt_view_csv_annual_basin(request):
     
     
     theme_path = os.path.join(os.path.dirname(__file__), 'static/yml/transparent_theme.yml')
-    print(theme_path)
+    
     theme = Theme(filename=theme_path)
     curdoc().theme=theme
     curdoc().add_root(p)
@@ -1828,25 +1857,26 @@ def ppt_view_csv_annual_basin(request):
     df_imd = df_imd.rename(columns={objectid: 'observed'})
     df_ssp245 = df_ssp245.rename(columns={objectid: 'ssp245'})
     df_ssp585 = df_ssp585.rename(columns={objectid: 'ssp585'})
-    print(df_hist)
-# Merge all DataFrames on their common date-time index
-    df_hist_imd = df_hist.join([df_imd], how='outer')
-    df_ssp245_ssp585 = df_ssp245.join([ df_ssp585], how='outer')
-    # Merge the DataFrames by concatenating them along the rows (time index)
-    merged_df = pd.concat([df_hist_imd, df_ssp245_ssp585])
-    
-    Data=merged_df.to_csv()
-    context_csv = {
-        'Data':Data
-    }
-    request.session['ppt_view_csv_annual_basin'] = context_csv
-    # Pass the CSV data along with the script and div to the template
+    request.session.save()
+
+    # Trigger the Celery task to process the time-consuming task
+    session_key =request.session.session_key
+    # Merge and store the result in the session
     context = {
         'script': combined_script,
         'div': combined_div,
-        'key':'ppt_view_csv_annual_basin'
+        'key': session_key
     }
-    return render(request, 'dashboard.html', context)
+    response = render(request, 'dashboard.html', context)
+
+    
+    df_hist_pickle = dill.dumps(df_hist)
+    df_imd_pickle = dill.dumps(df_imd)
+    merged_ssp245_pickle = dill.dumps(df_ssp245)
+    merged_ssp585_pickle = dill.dumps(df_ssp585)
+    process_csv_task.delay(df_hist_pickle, df_imd_pickle, merged_ssp245_pickle, merged_ssp585_pickle, session_key)
+
+    return response
 #1.
 def tmax_view_netcdf_annual(request):
     lat = request.GET.get('lat', None)
@@ -1873,19 +1903,10 @@ def tmax_view_netcdf_annual(request):
     ds_ssp585_far = xr.open_dataset(netcdf_file_path_ssp585_far).sel(lat=lat, lon=lng, method='nearest').tasmax.drop_vars(['lat', 'lon','height'])
 
     v_imdaa=ds_imdaa.sel(time=slice('1979','2014'))
-    
-    
-    # Convert to DataFrames
-    df_imdaa = v_imdaa.to_dataframe()
-    df_hist = ds_hist.to_dataframe()
-    df_ssp245_near = ds_ssp245_near.to_dataframe()
-    df_ssp245_mid = ds_ssp245_mid.to_dataframe()
-    df_ssp245_far = ds_ssp245_far.to_dataframe()
-    df_ssp585_near = ds_ssp585_near.to_dataframe()
-    df_ssp585_mid = ds_ssp585_mid.to_dataframe()
-    df_ssp585_far = ds_ssp585_far.to_dataframe()
-    
+    ds_ssp245 = xr.concat([ds_ssp245_near, ds_ssp245_mid, ds_ssp245_far], dim='time')
 
+    # Merge SSP585 datasets
+    ds_ssp585 = xr.concat([ds_ssp585_near, ds_ssp585_mid, ds_ssp585_far], dim='time')
     
     # Create a Bokeh figure
     # p = figure(title="Time Series Plot", x_axis_label='Date', y_axis_label='PPT', x_axis_type='datetime', width=700, margin=(0,0, 0, -265))
@@ -1893,19 +1914,18 @@ def tmax_view_netcdf_annual(request):
     
     
     theme_path = os.path.join(os.path.dirname(__file__), 'static/yml/transparent_theme.yml')
-    print(theme_path)
+    
     theme = Theme(filename=theme_path)
     curdoc().theme=theme
     curdoc().add_root(p)
-    merged_ssp245 = pd.concat([df_ssp245_near, df_ssp245_mid, df_ssp245_far])
-    merged_ssp585 = pd.concat([df_ssp585_near, df_ssp585_mid, df_ssp585_far])
+    
 
 
     # Plot the time series data
-    observed=p.line(df_imdaa.index, df_imdaa['tasmax'], legend_label='imdaa',color='red', line_width=4,visible=True)
-    hist_line=p.line(df_hist.index, df_hist['tasmax'], legend_label='hist', color='orange', line_width=2,visible=True)
-    ssp245=p.line(merged_ssp245.index, merged_ssp245['tasmax'], legend_label='ssp245_near',  color='green', line_width=2,visible=True)
-    ssp585=p.line(merged_ssp585.index, merged_ssp585['tasmax'], legend_label='ssp585_near',  color='grey', line_width=2,visible=True)
+    observed=p.line(v_imdaa.time, v_imdaa.values, legend_label='imdaa',color='red', line_width=4,visible=True)
+    hist_line=p.line(ds_hist.time, ds_hist.values, legend_label='hist', color='orange', line_width=2,visible=True)
+    ssp245=p.line(ds_ssp245.time, ds_ssp245.values, legend_label='ssp245_near',  color='green', line_width=2,visible=True)
+    ssp585=p.line(ds_ssp585.time, ds_ssp585.values, legend_label='ssp585_near',  color='grey', line_width=2,visible=True)
 
     # Create toggle buttons
     observed_toggle = Toggle(label="observed", active=True, button_type="success")
@@ -1963,20 +1983,26 @@ def tmax_view_netcdf_annual(request):
     combined_script = "".join(script)
     combined_div = "".join(div)
 
-    df_hist.index = pd.to_datetime(df_hist.index)  # Assuming your index is already in datetime format, otherwise, convert it
+    request.session.save()
 
-
+    # Trigger the Celery task to process the time-consuming task
+    session_key =request.session.session_key
     # Merge and store the result in the session
-    context_csv = mergetmax(df_hist, df_imdaa,merged_ssp245,merged_ssp585)
-    request.session['tmax_view_netcdf_annual'] = context_csv
-    # Pass the CSV data along with the script and div to the template
     context = {
         'script': combined_script,
         'div': combined_div,
-        'key':'tmax_view_netcdf_annual'
+        'key': session_key
     }
+    response = render(request, 'dashboard.html', context)
+
     
-    return render(request, 'dashboard.html', context)
+    df_hist_pickle = dill.dumps(ds_hist)
+    df_imd_pickle = dill.dumps(ds_imdaa)
+    merged_ssp245_pickle = dill.dumps(ds_ssp245)
+    merged_ssp585_pickle = dill.dumps(ds_ssp585)
+    process_dataframes_task.delay(df_hist_pickle, df_imd_pickle, merged_ssp245_pickle, merged_ssp585_pickle, session_key)
+
+    return response
 #2.
 def tmax_view_netcdf_monthly(request):
     lat = request.GET.get('lat', None)
@@ -1999,10 +2025,7 @@ def tmax_view_netcdf_monthly(request):
 
     v_imdaa=ds_imdaa.sel(time=slice('1979','2014'))
 
-    df_imdaa = v_imdaa.to_dataframe()
-    df_hist = ds_hist.to_dataframe()
-    df_ssp245 = ds_ssp245.to_dataframe()
-    df_ssp585 = ds_ssp585.to_dataframe()
+
 
     
 
@@ -2013,17 +2036,17 @@ def tmax_view_netcdf_monthly(request):
     
     
     theme_path = os.path.join(os.path.dirname(__file__), 'static/yml/transparent_theme.yml')
-    print(theme_path)
+    
     theme = Theme(filename=theme_path)
     curdoc().theme=theme
     curdoc().add_root(p)
 
 
     # Plot the time series data
-    observed=p.line(df_imdaa.index, df_imdaa['tasmax'], legend_label='imdaa',color='red', line_width=4,visible=True)
-    hist_line=p.line(df_hist.index, df_hist['tasmax'], legend_label='hist', color='orange', line_width=2,visible=True)
-    ssp245=p.line(df_ssp245.index, df_ssp245['tasmax'], legend_label='ssp245_near',  color='green', line_width=2,visible=True)
-    ssp585=p.line(df_ssp585.index, df_ssp585['tasmax'], legend_label='ssp585_near',  color='grey', line_width=2,visible=True)
+    observed=p.line(v_imdaa.time, v_imdaa.values, legend_label='imdaa',color='red', line_width=4,visible=True)
+    hist_line=p.line(ds_hist.time, ds_hist.values, legend_label='hist', color='orange', line_width=2,visible=True)
+    ssp245=p.line(ds_ssp245.time, ds_ssp245.values, legend_label='ssp245_near',  color='green', line_width=2,visible=True)
+    ssp585=p.line(ds_ssp585.time, ds_ssp585.values, legend_label='ssp585_near',  color='grey', line_width=2,visible=True)
 
     # Create toggle buttons
     observed_toggle = Toggle(label="observed", active=True, button_type="success")
@@ -2087,19 +2110,26 @@ def tmax_view_netcdf_monthly(request):
     combined_script = "".join(script)
     combined_div = "".join(div)
 
-    df_hist.index = pd.to_datetime(df_hist.index)  # Assuming your index is already in datetime format, otherwise, convert it
+    request.session.save()
 
-
+    # Trigger the Celery task to process the time-consuming task
+    session_key =request.session.session_key
     # Merge and store the result in the session
-    context_csv = mergetmax(df_hist, df_imdaa,df_ssp245,df_ssp585)
-    request.session['tmax_view_netcdf_monthly'] = context_csv
-    # Pass the CSV data along with the script and div to the template
     context = {
         'script': combined_script,
         'div': combined_div,
-        'key':'tmax_view_netcdf_monthly'
+        'key': session_key
     }
-    return render(request, 'dashboard.html', context)
+    response = render(request, 'dashboard.html', context)
+
+    
+    df_hist_pickle = dill.dumps(ds_hist)
+    df_imd_pickle = dill.dumps(ds_imdaa)
+    merged_ssp245_pickle = dill.dumps(ds_ssp245)
+    merged_ssp585_pickle = dill.dumps(ds_ssp585)
+    process_dataframes_task.delay(df_hist_pickle, df_imd_pickle, merged_ssp245_pickle, merged_ssp585_pickle, session_key)
+
+    return response
 #3.
 def tmax_view_netcdf_daily(request):
     lat = request.GET.get('lat', None)
@@ -2120,29 +2150,24 @@ def tmax_view_netcdf_daily(request):
     ds_ssp585 =xr.open_dataset(netcdf_file_path_ssp585).sel(lat=lat, lon=lng, method='nearest').tasmax.drop_vars(['lat', 'lon'])
 
     v_imdaa=ds_imdaa.sel(time=slice('1979','2014'))
-    # Convert to DataFrames
-    df_imdaa = v_imdaa.to_dataframe()
-    df_hist = ds_hist.to_dataframe()
-    df_ssp245 = ds_ssp245.to_dataframe()
-    df_ssp585 = ds_ssp585.to_dataframe()
-
+    
     # Create a Bokeh figure
     # p = figure(title="Time Series Plot", x_axis_label='Date', y_axis_label='PPT', x_axis_type='datetime', width=700, margin=(0,0, 0, -265))
     p = figure(x_axis_label='Date', y_axis_label='Tmax Daily', x_axis_type='datetime', width=100,height=100,toolbar_location=None)
     
     
     theme_path = os.path.join(os.path.dirname(__file__), 'static/yml/transparent_theme.yml')
-    print(theme_path)
+    
     theme = Theme(filename=theme_path)
     curdoc().theme=theme
     curdoc().add_root(p)
 
 
     # Plot the time series data
-    observed=p.line(df_imdaa.index, df_imdaa['tasmax'], legend_label='imdaa',color='red', line_width=4,visible=True)
-    hist_line=p.line(df_hist.index, df_hist['tasmax'], legend_label='hist', color='orange', line_width=2,visible=True)
-    ssp245=p.line(df_ssp245.index, df_ssp245['tasmax'], legend_label='ssp245_near',  color='green', line_width=2,visible=True)
-    ssp585=p.line(df_ssp585.index, df_ssp585['tasmax'], legend_label='ssp585_near',  color='grey', line_width=2,visible=True)
+    observed=p.line(v_imdaa.time, v_imdaa.values, legend_label='imdaa',color='red', line_width=4,visible=True)
+    hist_line=p.line(ds_hist.time, ds_hist.values, legend_label='hist', color='orange', line_width=2,visible=True)
+    ssp245=p.line(ds_ssp245.time, ds_ssp245.values, legend_label='ssp245_near',  color='green', line_width=2,visible=True)
+    ssp585=p.line(ds_ssp585.time, ds_ssp585.values, legend_label='ssp585_near',  color='grey', line_width=2,visible=True)
 
 
     # Create toggle buttons
@@ -2210,18 +2235,26 @@ def tmax_view_netcdf_daily(request):
     combined_script = "".join(script)
     combined_div = "".join(div)
 
-    df_hist.index = pd.to_datetime(df_hist.index)  # Assuming your index is already in datetime format, otherwise, convert it
+    request.session.save()
 
+    # Trigger the Celery task to process the time-consuming task
+    session_key =request.session.session_key
     # Merge and store the result in the session
-    context_csv = mergetmax(df_hist, df_imdaa,df_ssp245,df_ssp585)
-    request.session['tmax_view_netcdf_daily'] = context_csv
-    # Pass the CSV data along with the script and div to the template
     context = {
         'script': combined_script,
         'div': combined_div,
-        'key':'tmax_view_netcdf_daily'
+        'key': session_key
     }
-    return render(request,'dashboard.html',context)
+    response = render(request, 'dashboard.html', context)
+
+    
+    df_hist_pickle = dill.dumps(ds_hist)
+    df_imd_pickle = dill.dumps(ds_imdaa)
+    merged_ssp245_pickle = dill.dumps(ds_ssp245)
+    merged_ssp585_pickle = dill.dumps(ds_ssp585)
+    process_dataframes_task.delay(df_hist_pickle, df_imd_pickle, merged_ssp245_pickle, merged_ssp585_pickle, session_key)
+
+    return response
 #4.
 def tmax_view_csv_daily_district(request):
     objectid = request.GET.get('objectid', None)
@@ -2247,7 +2280,7 @@ def tmax_view_csv_daily_district(request):
     
     
     theme_path = os.path.join(os.path.dirname(__file__), 'static/yml/transparent_theme.yml')
-    print(theme_path)
+    
     theme = Theme(filename=theme_path)
     curdoc().theme=theme
     curdoc().add_root(p)
@@ -2337,25 +2370,26 @@ def tmax_view_csv_daily_district(request):
     df_imd = df_imdaa.rename(columns={objectid: 'observed'})
     df_ssp245 = df_ssp245.rename(columns={objectid: 'ssp245'})
     df_ssp585 = df_ssp585.rename(columns={objectid: 'ssp585'})
-    print(df_hist)
-# Merge all DataFrames on their common date-time index
-    df_hist_imd = df_hist.join([df_imd], how='outer')
-    df_ssp245_ssp585 = df_ssp245.join([ df_ssp585], how='outer')
-    # Merge the DataFrames by concatenating them along the rows (time index)
-    merged_df = pd.concat([df_hist_imd, df_ssp245_ssp585])
-    
-    Data=merged_df.to_csv()
-    context_csv = {
-        'Data':Data
-    }
-    request.session['tmax_view_csv_daily_district'] = context_csv
-    # Pass the CSV data along with the script and div to the template
+    request.session.save()
+
+    # Trigger the Celery task to process the time-consuming task
+    session_key =request.session.session_key
+    # Merge and store the result in the session
     context = {
         'script': combined_script,
         'div': combined_div,
-        'key':'tmax_view_csv_daily_district'
+        'key': session_key
     }
-    return render(request,'dashboard.html',context)
+    response = render(request, 'dashboard.html', context)
+
+    
+    df_hist_pickle = dill.dumps(df_hist)
+    df_imd_pickle = dill.dumps(df_imd)
+    merged_ssp245_pickle = dill.dumps(df_ssp245)
+    merged_ssp585_pickle = dill.dumps(df_ssp585)
+    process_csv_task.delay(df_hist_pickle, df_imd_pickle, merged_ssp245_pickle, merged_ssp585_pickle, session_key)
+
+    return response
 #5.
 def tmax_view_csv_monthly_district(request):
     objectid = request.GET.get('objectid', None)
@@ -2380,7 +2414,7 @@ def tmax_view_csv_monthly_district(request):
     
     
     theme_path = os.path.join(os.path.dirname(__file__), 'static/yml/transparent_theme.yml')
-    print(theme_path)
+    
     theme = Theme(filename=theme_path)
     curdoc().theme=theme
     curdoc().add_root(p)
@@ -2469,25 +2503,26 @@ def tmax_view_csv_monthly_district(request):
     df_imd = df_imdaa.rename(columns={objectid: 'observed'})
     df_ssp245 = df_ssp245.rename(columns={objectid: 'ssp245'})
     df_ssp585 = df_ssp585.rename(columns={objectid: 'ssp585'})
-    print(df_hist)
-# Merge all DataFrames on their common date-time index
-    df_hist_imd = df_hist.join([df_imd], how='outer')
-    df_ssp245_ssp585 = df_ssp245.join([ df_ssp585], how='outer')
-    # Merge the DataFrames by concatenating them along the rows (time index)
-    merged_df = pd.concat([df_hist_imd, df_ssp245_ssp585])
-    
-    Data=merged_df.to_csv()
-    context_csv = {
-        'Data':Data
-    }
-    request.session['tmax_view_csv_monthly_district'] = context_csv
-    # Pass the CSV data along with the script and div to the template
+    request.session.save()
+
+    # Trigger the Celery task to process the time-consuming task
+    session_key =request.session.session_key
+    # Merge and store the result in the session
     context = {
         'script': combined_script,
         'div': combined_div,
-        'key':'tmax_view_csv_monthly_district'
+        'key': session_key
     }
-    return render(request,'dashboard.html',context)
+    response = render(request, 'dashboard.html', context)
+
+    
+    df_hist_pickle = dill.dumps(df_hist)
+    df_imd_pickle = dill.dumps(df_imd)
+    merged_ssp245_pickle = dill.dumps(df_ssp245)
+    merged_ssp585_pickle = dill.dumps(df_ssp585)
+    process_csv_task.delay(df_hist_pickle, df_imd_pickle, merged_ssp245_pickle, merged_ssp585_pickle, session_key)
+
+    return response
 #6.
 def tmax_view_csv_annual_district(request):
     objectid = request.GET.get('objectid', None)
@@ -2513,7 +2548,7 @@ def tmax_view_csv_annual_district(request):
     
     
     theme_path = os.path.join(os.path.dirname(__file__), 'static/yml/transparent_theme.yml')
-    print(theme_path)
+    
     theme = Theme(filename=theme_path)
     curdoc().theme=theme
     curdoc().add_root(p)
@@ -2603,25 +2638,26 @@ def tmax_view_csv_annual_district(request):
     df_imd = df_imdaa.rename(columns={objectid: 'observed'})
     df_ssp245 = df_ssp245.rename(columns={objectid: 'ssp245'})
     df_ssp585 = df_ssp585.rename(columns={objectid: 'ssp585'})
-    
-# Merge all DataFrames on their common date-time index
-    df_hist_imd = df_hist.join([df_imd], how='outer')
-    df_ssp245_ssp585 = df_ssp245.join([ df_ssp585], how='outer')
-    # Merge the DataFrames by concatenating them along the rows (time index)
-    merged_df = pd.concat([df_hist_imd, df_ssp245_ssp585])
-    
-    Data=merged_df.to_csv()
-    context_csv = {
-        'Data':Data
-    }
-    request.session['tmax_view_csv_annual_district'] = context_csv
-    # Pass the CSV data along with the script and div to the template
+    request.session.save()
+
+    # Trigger the Celery task to process the time-consuming task
+    session_key =request.session.session_key
+    # Merge and store the result in the session
     context = {
         'script': combined_script,
         'div': combined_div,
-        'key':'tmax_view_csv_annual_district'
+        'key': session_key
     }
-    return render(request,'dashboard.html',context)
+    response = render(request, 'dashboard.html', context)
+
+    
+    df_hist_pickle = dill.dumps(df_hist)
+    df_imd_pickle = dill.dumps(df_imd)
+    merged_ssp245_pickle = dill.dumps(df_ssp245)
+    merged_ssp585_pickle = dill.dumps(df_ssp585)
+    process_csv_task.delay(df_hist_pickle, df_imd_pickle, merged_ssp245_pickle, merged_ssp585_pickle, session_key)
+
+    return response
 #7.
 def tmax_view_csv_daily_state(request):
     objectid = request.GET.get('objectid', None)
@@ -2647,7 +2683,7 @@ def tmax_view_csv_daily_state(request):
     
     
     theme_path = os.path.join(os.path.dirname(__file__), 'static/yml/transparent_theme.yml')
-    print(theme_path)
+    
     theme = Theme(filename=theme_path)
     curdoc().theme=theme
     curdoc().add_root(p)
@@ -2737,25 +2773,26 @@ def tmax_view_csv_daily_state(request):
     df_imd = df_imdaa.rename(columns={objectid: 'observed'})
     df_ssp245 = df_ssp245.rename(columns={objectid: 'ssp245'})
     df_ssp585 = df_ssp585.rename(columns={objectid: 'ssp585'})
-    print(df_hist)
-# Merge all DataFrames on their common date-time index
-    df_hist_imd = df_hist.join([df_imd], how='outer')
-    df_ssp245_ssp585 = df_ssp245.join([ df_ssp585], how='outer')
-    # Merge the DataFrames by concatenating them along the rows (time index)
-    merged_df = pd.concat([df_hist_imd, df_ssp245_ssp585])
-    
-    Data=merged_df.to_csv()
-    context_csv = {
-        'Data':Data
-    }
-    request.session['tmax_view_csv_daily_state'] = context_csv
-    # Pass the CSV data along with the script and div to the template
+    request.session.save()
+
+    # Trigger the Celery task to process the time-consuming task
+    session_key =request.session.session_key
+    # Merge and store the result in the session
     context = {
         'script': combined_script,
         'div': combined_div,
-        'key':'tmax_view_csv_daily_state'
+        'key': session_key
     }
-    return render(request,'dashboard.html',context)
+    response = render(request, 'dashboard.html', context)
+
+    
+    df_hist_pickle = dill.dumps(df_hist)
+    df_imd_pickle = dill.dumps(df_imd)
+    merged_ssp245_pickle = dill.dumps(df_ssp245)
+    merged_ssp585_pickle = dill.dumps(df_ssp585)
+    process_csv_task.delay(df_hist_pickle, df_imd_pickle, merged_ssp245_pickle, merged_ssp585_pickle, session_key)
+
+    return response
 #8.
 def tmax_view_csv_monthly_state(request):
     objectid = request.GET.get('objectid', None)
@@ -2781,7 +2818,7 @@ def tmax_view_csv_monthly_state(request):
     
     
     theme_path = os.path.join(os.path.dirname(__file__), 'static/yml/transparent_theme.yml')
-    print(theme_path)
+    
     theme = Theme(filename=theme_path)
     curdoc().theme=theme
     curdoc().add_root(p)
@@ -2871,25 +2908,26 @@ def tmax_view_csv_monthly_state(request):
     df_imd = df_imdaa.rename(columns={objectid: 'observed'})
     df_ssp245 = df_ssp245.rename(columns={objectid: 'ssp245'})
     df_ssp585 = df_ssp585.rename(columns={objectid: 'ssp585'})
-    
-# Merge all DataFrames on their common date-time index
-    df_hist_imd = df_hist.join([df_imd], how='outer')
-    df_ssp245_ssp585 = df_ssp245.join([ df_ssp585], how='outer')
-    # Merge the DataFrames by concatenating them along the rows (time index)
-    merged_df = pd.concat([df_hist_imd, df_ssp245_ssp585])
-    
-    Data=merged_df.to_csv()
-    context_csv = {
-        'Data':Data
-    }
-    request.session['tmax_view_csv_monthly_state'] = context_csv
-    # Pass the CSV data along with the script and div to the template
+    request.session.save()
+
+    # Trigger the Celery task to process the time-consuming task
+    session_key =request.session.session_key
+    # Merge and store the result in the session
     context = {
         'script': combined_script,
         'div': combined_div,
-        'key':'tmax_view_csv_monthly_state'
+        'key': session_key
     }
-    return render(request,'dashboard.html',context)
+    response = render(request, 'dashboard.html', context)
+
+    
+    df_hist_pickle = dill.dumps(df_hist)
+    df_imd_pickle = dill.dumps(df_imd)
+    merged_ssp245_pickle = dill.dumps(df_ssp245)
+    merged_ssp585_pickle = dill.dumps(df_ssp585)
+    process_csv_task.delay(df_hist_pickle, df_imd_pickle, merged_ssp245_pickle, merged_ssp585_pickle, session_key)
+
+    return response
 #9.
 def tmax_view_csv_annual_state(request):
     objectid = request.GET.get('objectid', None)
@@ -2915,7 +2953,7 @@ def tmax_view_csv_annual_state(request):
     
     
     theme_path = os.path.join(os.path.dirname(__file__), 'static/yml/transparent_theme.yml')
-    print(theme_path)
+    
     theme = Theme(filename=theme_path)
     curdoc().theme=theme
     curdoc().add_root(p)
@@ -3004,25 +3042,26 @@ def tmax_view_csv_annual_state(request):
     df_imd = df_imdaa.rename(columns={objectid: 'observed'})
     df_ssp245 = df_ssp245.rename(columns={objectid: 'ssp245'})
     df_ssp585 = df_ssp585.rename(columns={objectid: 'ssp585'})
-    
-# Merge all DataFrames on their common date-time index
-    df_hist_imd = df_hist.join([df_imd], how='outer')
-    df_ssp245_ssp585 = df_ssp245.join([ df_ssp585], how='outer')
-    # Merge the DataFrames by concatenating them along the rows (time index)
-    merged_df = pd.concat([df_hist_imd, df_ssp245_ssp585])
-    
-    Data=merged_df.to_csv()
-    context_csv = {
-        'Data':Data
-    }
-    request.session['tmax_view_csv_annual_state'] = context_csv
-    # Pass the CSV data along with the script and div to the template
+    request.session.save()
+
+    # Trigger the Celery task to process the time-consuming task
+    session_key =request.session.session_key
+    # Merge and store the result in the session
     context = {
         'script': combined_script,
         'div': combined_div,
-        'key':'tmax_view_csv_annual_state'
+        'key': session_key
     }
-    return render(request,'dashboard.html',context)
+    response = render(request, 'dashboard.html', context)
+
+    
+    df_hist_pickle = dill.dumps(df_hist)
+    df_imd_pickle = dill.dumps(df_imd)
+    merged_ssp245_pickle = dill.dumps(df_ssp245)
+    merged_ssp585_pickle = dill.dumps(df_ssp585)
+    process_csv_task.delay(df_hist_pickle, df_imd_pickle, merged_ssp245_pickle, merged_ssp585_pickle, session_key)
+
+    return response
 #10.
 def tmax_view_csv_daily_basin(request):
     objectid = request.GET.get('objectid', None)
@@ -3048,7 +3087,7 @@ def tmax_view_csv_daily_basin(request):
     
     
     theme_path = os.path.join(os.path.dirname(__file__), 'static/yml/transparent_theme.yml')
-    print(theme_path)
+    
     theme = Theme(filename=theme_path)
     curdoc().theme=theme
     curdoc().add_root(p)
@@ -3138,25 +3177,26 @@ def tmax_view_csv_daily_basin(request):
     df_imd = df_imdaa.rename(columns={objectid: 'observed'})
     df_ssp245 = df_ssp245.rename(columns={objectid: 'ssp245'})
     df_ssp585 = df_ssp585.rename(columns={objectid: 'ssp585'})
-    print(df_hist)
-# Merge all DataFrames on their common date-time index
-    df_hist_imd = df_hist.join([df_imd], how='outer')
-    df_ssp245_ssp585 = df_ssp245.join([ df_ssp585], how='outer')
-    # Merge the DataFrames by concatenating them along the rows (time index)
-    merged_df = pd.concat([df_hist_imd, df_ssp245_ssp585])
-    
-    Data=merged_df.to_csv()
-    context_csv = {
-        'Data':Data
-    }
-    request.session['tmax_view_csv_daily_basin'] = context_csv
-    # Pass the CSV data along with the script and div to the template
+    request.session.save()
+
+    # Trigger the Celery task to process the time-consuming task
+    session_key =request.session.session_key
+    # Merge and store the result in the session
     context = {
         'script': combined_script,
         'div': combined_div,
-        'key':'tmax_view_csv_daily_basin'
+        'key': session_key
     }
-    return render(request,'dashboard.html',context)
+    response = render(request, 'dashboard.html', context)
+
+    
+    df_hist_pickle = dill.dumps(df_hist)
+    df_imd_pickle = dill.dumps(df_imd)
+    merged_ssp245_pickle = dill.dumps(df_ssp245)
+    merged_ssp585_pickle = dill.dumps(df_ssp585)
+    process_csv_task.delay(df_hist_pickle, df_imd_pickle, merged_ssp245_pickle, merged_ssp585_pickle, session_key)
+
+    return response
 #11.
 def tmax_view_csv_monthly_basin(request):
     objectid = request.GET.get('objectid', None)
@@ -3182,7 +3222,7 @@ def tmax_view_csv_monthly_basin(request):
     
     
     theme_path = os.path.join(os.path.dirname(__file__), 'static/yml/transparent_theme.yml')
-    print(theme_path)
+    
     theme = Theme(filename=theme_path)
     curdoc().theme=theme
     curdoc().add_root(p)
@@ -3272,25 +3312,26 @@ def tmax_view_csv_monthly_basin(request):
     df_imd = df_imdaa.rename(columns={objectid: 'observed'})
     df_ssp245 = df_ssp245.rename(columns={objectid: 'ssp245'})
     df_ssp585 = df_ssp585.rename(columns={objectid: 'ssp585'})
-    
-# Merge all DataFrames on their common date-time index
-    df_hist_imd = df_hist.join([df_imd], how='outer')
-    df_ssp245_ssp585 = df_ssp245.join([ df_ssp585], how='outer')
-    # Merge the DataFrames by concatenating them along the rows (time index)
-    merged_df = pd.concat([df_hist_imd, df_ssp245_ssp585])
-    
-    Data=merged_df.to_csv()
-    context_csv = {
-        'Data':Data
-    }
-    request.session['tmax_view_csv_monthly_basin'] = context_csv
-    # Pass the CSV data along with the script and div to the template
+    request.session.save()
+
+    # Trigger the Celery task to process the time-consuming task
+    session_key =request.session.session_key
+    # Merge and store the result in the session
     context = {
         'script': combined_script,
         'div': combined_div,
-        'key':'tmax_view_csv_monthly_basin'
+        'key': session_key
     }
-    return render(request,'dashboard.html',context)
+    response = render(request, 'dashboard.html', context)
+
+    
+    df_hist_pickle = dill.dumps(df_hist)
+    df_imd_pickle = dill.dumps(df_imd)
+    merged_ssp245_pickle = dill.dumps(df_ssp245)
+    merged_ssp585_pickle = dill.dumps(df_ssp585)
+    process_csv_task.delay(df_hist_pickle, df_imd_pickle, merged_ssp245_pickle, merged_ssp585_pickle, session_key)
+
+    return response
 #12.
 def tmax_view_csv_annual_basin(request):
     objectid = request.GET.get('objectid', None)
@@ -3315,7 +3356,7 @@ def tmax_view_csv_annual_basin(request):
     
     
     theme_path = os.path.join(os.path.dirname(__file__), 'static/yml/transparent_theme.yml')
-    print(theme_path)
+    
     theme = Theme(filename=theme_path)
     curdoc().theme=theme
     curdoc().add_root(p)
@@ -3405,25 +3446,26 @@ def tmax_view_csv_annual_basin(request):
     df_imd = df_imdaa.rename(columns={objectid: 'observed'})
     df_ssp245 = df_ssp245.rename(columns={objectid: 'ssp245'})
     df_ssp585 = df_ssp585.rename(columns={objectid: 'ssp585'})
-    print(df_hist)
-# Merge all DataFrames on their common date-time index
-    df_hist_imd = df_hist.join([df_imd], how='outer')
-    df_ssp245_ssp585 = df_ssp245.join([ df_ssp585], how='outer')
-    # Merge the DataFrames by concatenating them along the rows (time index)
-    merged_df = pd.concat([df_hist_imd, df_ssp245_ssp585])
-    
-    Data=merged_df.to_csv()
-    context_csv = {
-        'Data':Data
-    }
-    request.session['tmax_view_csv_annual_basin'] = context_csv
-    # Pass the CSV data along with the script and div to the template
+    request.session.save()
+
+    # Trigger the Celery task to process the time-consuming task
+    session_key =request.session.session_key
+    # Merge and store the result in the session
     context = {
         'script': combined_script,
         'div': combined_div,
-        'key':'tmax_view_csv_annual_basin'
+        'key': session_key
     }
-    return render(request,'dashboard.html',context)
+    response = render(request, 'dashboard.html', context)
+
+    
+    df_hist_pickle = dill.dumps(df_hist)
+    df_imd_pickle = dill.dumps(df_imd)
+    merged_ssp245_pickle = dill.dumps(df_ssp245)
+    merged_ssp585_pickle = dill.dumps(df_ssp585)
+    process_csv_task.delay(df_hist_pickle, df_imd_pickle, merged_ssp245_pickle, merged_ssp585_pickle, session_key)
+
+    return response
 #1.
 def tmin_view_netcdf_annual(request):
     lat = request.GET.get('lat', None)
@@ -3452,15 +3494,7 @@ def tmin_view_netcdf_annual(request):
     ds_ssp585_far = xr.open_dataset(netcdf_file_path_ssp585_far).sel(lat=lat, lon=lng, method='nearest').tasmin.drop_vars(['lat', 'lon','height'])
 
     v_imdaa=ds__imdaa.sel(time=slice('1979','2014'))
-    # Convert to DataFrames
-    df_imdaa = v_imdaa.to_dataframe()
-    df_hist = ds_hist.to_dataframe()
-    df_ssp245_near = ds_ssp245_near.to_dataframe()
-    df_ssp245_mid = ds_ssp245_mid.to_dataframe()
-    df_ssp245_far = ds_ssp245_far.to_dataframe()
-    df_ssp585_near = ds_ssp585_near.to_dataframe()
-    df_ssp585_mid = ds_ssp585_mid.to_dataframe()
-    df_ssp585_far = ds_ssp585_far.to_dataframe()
+    
     
 
     
@@ -3470,19 +3504,21 @@ def tmin_view_netcdf_annual(request):
     
     
     theme_path = os.path.join(os.path.dirname(__file__), 'static/yml/transparent_theme.yml')
-    print(theme_path)
+    
     theme = Theme(filename=theme_path)
     curdoc().theme=theme
     curdoc().add_root(p)
     
-    merged_ssp245 = pd.concat([df_ssp245_near, df_ssp245_mid, df_ssp245_far])
-    merged_ssp585 = pd.concat([df_ssp585_near, df_ssp585_mid, df_ssp585_far])
+    ds_ssp245 = xr.concat([ds_ssp245_near, ds_ssp245_mid, ds_ssp245_far], dim='time')
+
+    # Merge SSP585 datasets
+    ds_ssp585 = xr.concat([ds_ssp585_near, ds_ssp585_mid, ds_ssp585_far], dim='time')
 
     # Plot the time series data
-    observed=p.line(df_imdaa.index, df_imdaa['tasmin'], legend_label='imdaa',color='red', line_width=4,visible=True)
-    hist_line=p.line(df_hist.index, df_hist['tasmin'], legend_label='hist', color='orange', line_width=2,visible=True)
-    ssp245=p.line(merged_ssp245.index, merged_ssp245['tasmin'], legend_label='ssp245_near',  color='green', line_width=2,visible=True)
-    ssp585=p.line(merged_ssp585.index, merged_ssp585['tasmin'], legend_label='ssp585_near',  color='grey', line_width=2,visible=True)
+    observed=p.line(v_imdaa.time, v_imdaa.values, legend_label='imdaa',color='red', line_width=4,visible=True)
+    hist_line=p.line(ds_hist.time, ds_hist.values, legend_label='hist', color='orange', line_width=2,visible=True)
+    ssp245=p.line(ds_ssp245.time, ds_ssp245.values, legend_label='ssp245_near',  color='green', line_width=2,visible=True)
+    ssp585=p.line(ds_ssp585.time, ds_ssp585.values, legend_label='ssp585_near',  color='grey', line_width=2,visible=True)
 
     # Create toggle buttons
     observed_toggle = Toggle(label="Observed", active=True, button_type="success")
@@ -3553,18 +3589,25 @@ def tmin_view_netcdf_annual(request):
     combined_script = "".join(script)
     combined_div = "".join(div)
 
-    df_hist.index = pd.to_datetime(df_hist.index)  # Assuming your index is already in datetime format, otherwise, convert it
+    request.session.save()
 
+    # Trigger the Celery task to process the time-consuming task
+    session_key =request.session.session_key
     # Merge and store the result in the session
-    context_csv = mergetmin(df_hist, df_imdaa,merged_ssp245,merged_ssp585)
-    request.session['tmin_view_netcdf_annual'] = context_csv
-    # Pass the CSV data along with the script and div to the template
     context = {
         'script': combined_script,
         'div': combined_div,
-        'key':'tmin_view_netcdf_annual'
+        'key': session_key
     }
-    return render(request, 'dashboard.html', context)
+    response = render(request, 'dashboard.html', context)
+    
+    df_hist_pickle = dill.dumps(ds_hist)
+    df_imd_pickle = dill.dumps(v_imdaa)
+    merged_ssp245_pickle = dill.dumps(ds_ssp245)
+    merged_ssp585_pickle = dill.dumps(ds_ssp585)
+    process_dataframes_task.delay(df_hist_pickle, df_imd_pickle, merged_ssp245_pickle, merged_ssp585_pickle, session_key)
+
+    return response
 #2.
 def tmin_view_netcdf_monthly(request):
     lat = request.GET.get('lat', None)
@@ -3588,11 +3631,6 @@ def tmin_view_netcdf_monthly(request):
     v_imdaa=ds_imdaa.sel(time=slice('1979','2014'))
 
 
-    # Convert to DataFrames
-    df_imdaa = v_imdaa.to_dataframe()
-    df_hist = ds_hist.to_dataframe()
-    df_ssp245 = ds_ssp245.to_dataframe()
-    df_ssp585 = ds_ssp585.to_dataframe()
 
     
 
@@ -3603,17 +3641,17 @@ def tmin_view_netcdf_monthly(request):
     
     
     theme_path = os.path.join(os.path.dirname(__file__), 'static/yml/transparent_theme.yml')
-    print(theme_path)
+    
     theme = Theme(filename=theme_path)
     curdoc().theme=theme
     curdoc().add_root(p)
     
 
     # Plot the time series data
-    observed=p.line(df_imdaa.index, df_imdaa['tasmin'], legend_label='imdaa',color='red', line_width=4,visible=True)
-    hist_line=p.line(df_hist.index, df_hist['tasmin'], legend_label='hist', color='orange', line_width=2,visible=True)
-    ssp245=p.line(df_ssp245.index, df_ssp245['tasmin'], legend_label='ssp245_near',  color='green', line_width=2,visible=True)
-    ssp585=p.line(df_ssp585.index, df_ssp585['tasmin'], legend_label='ssp585_near',  color='grey', line_width=2,visible=True)
+    observed=p.line(v_imdaa.time, v_imdaa.values, legend_label='imdaa',color='red', line_width=4,visible=True)
+    hist_line=p.line(ds_hist.time, ds_hist.values, legend_label='hist', color='orange', line_width=2,visible=True)
+    ssp245=p.line(ds_ssp245.time, ds_ssp245.values, legend_label='ssp245_near',  color='green', line_width=2,visible=True)
+    ssp585=p.line(ds_ssp585.time, ds_ssp585.values, legend_label='ssp585_near',  color='grey', line_width=2,visible=True)
 
 
     # Create toggle buttons
@@ -3685,19 +3723,25 @@ def tmin_view_netcdf_monthly(request):
     combined_script = "".join(script)
     combined_div = "".join(div)
 
-    df_hist.index = pd.to_datetime(df_hist.index)  # Assuming your index is already in datetime format, otherwise, convert it
+    request.session.save()
 
-
+    # Trigger the Celery task to process the time-consuming task
+    session_key =request.session.session_key
     # Merge and store the result in the session
-    context_csv = mergetmin(df_hist, df_imdaa,df_ssp245,df_ssp585)
-    request.session['tmin_view_netcdf_monthly'] = context_csv
-    # Pass the CSV data along with the script and div to the template
     context = {
         'script': combined_script,
         'div': combined_div,
-        'key':'tmin_view_netcdf_monthly'
+        'key': session_key
     }
-    return render(request,'dashboard.html',context)
+    response = render(request, 'dashboard.html', context)
+    
+    df_hist_pickle = dill.dumps(ds_hist)
+    df_imd_pickle = dill.dumps(v_imdaa)
+    merged_ssp245_pickle = dill.dumps(ds_ssp245)
+    merged_ssp585_pickle = dill.dumps(ds_ssp585)
+    process_dataframes_task.delay(df_hist_pickle, df_imd_pickle, merged_ssp245_pickle, merged_ssp585_pickle, session_key)
+
+    return response
 #3.
 def tmin_view_netcdf_daily(request):
     lat = request.GET.get('lat', None)
@@ -3719,12 +3763,6 @@ def tmin_view_netcdf_daily(request):
 
 
     v_imdaa=ds_imdaa.sel(time=slice('1979','2014'))
-    
-    # Convert to DataFrames
-    df_imdaa = v_imdaa.to_dataframe()
-    df_hist = ds_hist.to_dataframe()
-    df_ssp245 = ds_ssp245.to_dataframe()
-    df_ssp585 = ds_ssp585.to_dataframe()
 
     
 
@@ -3735,7 +3773,7 @@ def tmin_view_netcdf_daily(request):
     
     
     theme_path = os.path.join(os.path.dirname(__file__), 'static/yml/transparent_theme.yml')
-    print(theme_path)
+    
     theme = Theme(filename=theme_path)
     curdoc().theme=theme
     curdoc().add_root(p)
@@ -3743,10 +3781,10 @@ def tmin_view_netcdf_daily(request):
 
 
     # Plot the time series data
-    observed=p.line(df_imdaa.index, df_imdaa['tasmin'], legend_label='imdaa',color='red', line_width=4,visible=True)
-    hist_line=p.line(df_hist.index, df_hist['tasmin'], legend_label='hist', color='orange', line_width=2,visible=True)
-    ssp245=p.line(df_ssp245.index, df_ssp245['tasmin'], legend_label='ssp245_near',  color='green', line_width=2,visible=True)
-    ssp585=p.line(df_ssp585.index, df_ssp585['tasmin'], legend_label='ssp585_near',  color='grey', line_width=2,visible=True)
+    observed=p.line(v_imdaa.time, v_imdaa.values, legend_label='imdaa',color='red', line_width=4,visible=True)
+    hist_line=p.line(ds_hist.time, ds_hist.values, legend_label='hist', color='orange', line_width=2,visible=True)
+    ssp245=p.line(ds_ssp245.time, ds_ssp245.values, legend_label='ssp245_near',  color='green', line_width=2,visible=True)
+    ssp585=p.line(ds_ssp585.time, ds_ssp585.values, legend_label='ssp585_near',  color='grey', line_width=2,visible=True)
 
 
     # Create toggle buttons
@@ -3818,19 +3856,25 @@ def tmin_view_netcdf_daily(request):
     combined_script = "".join(script)
     combined_div = "".join(div)
 
-    df_hist.index = pd.to_datetime(df_hist.index)  # Assuming your index is already in datetime format, otherwise, convert it
+    request.session.save()
 
-
+    # Trigger the Celery task to process the time-consuming task
+    session_key =request.session.session_key
     # Merge and store the result in the session
-    context_csv = mergetmin(df_hist, df_imdaa,df_ssp245,df_ssp585)
-    request.session['tmin_view_netcdf_daily'] = context_csv
-    # Pass the CSV data along with the script and div to the template
     context = {
         'script': combined_script,
         'div': combined_div,
-        'key':'tmin_view_netcdf_daily'
+        'key': session_key
     }
-    return render(request,'dashboard.html',context)
+    response = render(request, 'dashboard.html', context)
+    
+    df_hist_pickle = dill.dumps(ds_hist)
+    df_imd_pickle = dill.dumps(v_imdaa)
+    merged_ssp245_pickle = dill.dumps(ds_ssp245)
+    merged_ssp585_pickle = dill.dumps(ds_ssp585)
+    process_dataframes_task.delay(df_hist_pickle, df_imd_pickle, merged_ssp245_pickle, merged_ssp585_pickle, session_key)
+
+    return response
 #4.
 def tmin_view_csv_daily_district(request):
     objectid = request.GET.get('objectid', None)
@@ -3856,7 +3900,7 @@ def tmin_view_csv_daily_district(request):
     
     
     theme_path = os.path.join(os.path.dirname(__file__), 'static/yml/transparent_theme.yml')
-    print(theme_path)
+    
     theme = Theme(filename=theme_path)
     curdoc().theme=theme
     curdoc().add_root(p)
@@ -3946,25 +3990,26 @@ def tmin_view_csv_daily_district(request):
     df_imd = df_imdaa.rename(columns={objectid: 'observed'})
     df_ssp245 = df_ssp245.rename(columns={objectid: 'ssp245'})
     df_ssp585 = df_ssp585.rename(columns={objectid: 'ssp585'})
-    print(df_hist)
-# Merge all DataFrames on their common date-time index
-    df_hist_imd = df_hist.join([df_imd], how='outer')
-    df_ssp245_ssp585 = df_ssp245.join([ df_ssp585], how='outer')
-    # Merge the DataFrames by concatenating them along the rows (time index)
-    merged_df = pd.concat([df_hist_imd, df_ssp245_ssp585])
-    
-    Data=merged_df.to_csv()
-    context_csv = {
-        'Data':Data
-    }
-    request.session['tmin_view_csv_daily_district'] = context_csv
-    # Pass the CSV data along with the script and div to the template
+    request.session.save()
+
+    # Trigger the Celery task to process the time-consuming task
+    session_key =request.session.session_key
+    # Merge and store the result in the session
     context = {
         'script': combined_script,
         'div': combined_div,
-        'key':'tmin_view_csv_daily_district'
+        'key': session_key
     }
-    return render(request,'dashboard.html',context)
+    response = render(request, 'dashboard.html', context)
+
+    
+    df_hist_pickle = dill.dumps(df_hist)
+    df_imd_pickle = dill.dumps(df_imd)
+    merged_ssp245_pickle = dill.dumps(df_ssp245)
+    merged_ssp585_pickle = dill.dumps(df_ssp585)
+    process_csv_task.delay(df_hist_pickle, df_imd_pickle, merged_ssp245_pickle, merged_ssp585_pickle, session_key)
+
+    return response
 #5.
 def tmin_view_csv_monthly_district(request):
     objectid = request.GET.get('objectid', None)
@@ -3990,7 +4035,7 @@ def tmin_view_csv_monthly_district(request):
     
     
     theme_path = os.path.join(os.path.dirname(__file__), 'static/yml/transparent_theme.yml')
-    print(theme_path)
+    
     theme = Theme(filename=theme_path)
     curdoc().theme=theme
     curdoc().add_root(p)
@@ -4080,25 +4125,26 @@ def tmin_view_csv_monthly_district(request):
     df_imd = df_imdaa.rename(columns={objectid: 'observed'})
     df_ssp245 = df_ssp245.rename(columns={objectid: 'ssp245'})
     df_ssp585 = df_ssp585.rename(columns={objectid: 'ssp585'})
-    
-# Merge all DataFrames on their common date-time index
-    df_hist_imd = df_hist.join([df_imd], how='outer')
-    df_ssp245_ssp585 = df_ssp245.join([ df_ssp585], how='outer')
-    # Merge the DataFrames by concatenating them along the rows (time index)
-    merged_df = pd.concat([df_hist_imd, df_ssp245_ssp585])
-    
-    Data=merged_df.to_csv()
-    context_csv = {
-        'Data':Data
-    }
-    request.session['tmin_view_csv_monthly_district'] = context_csv
-    # Pass the CSV data along with the script and div to the template
+    request.session.save()
+
+    # Trigger the Celery task to process the time-consuming task
+    session_key =request.session.session_key
+    # Merge and store the result in the session
     context = {
         'script': combined_script,
         'div': combined_div,
-        'key':'tmin_view_csv_monthly_district'
+        'key': session_key
     }
-    return render(request,'dashboard.html',context)
+    response = render(request, 'dashboard.html', context)
+
+    
+    df_hist_pickle = dill.dumps(df_hist)
+    df_imd_pickle = dill.dumps(df_imd)
+    merged_ssp245_pickle = dill.dumps(df_ssp245)
+    merged_ssp585_pickle = dill.dumps(df_ssp585)
+    process_csv_task.delay(df_hist_pickle, df_imd_pickle, merged_ssp245_pickle, merged_ssp585_pickle, session_key)
+
+    return response
 #6.
 def tmin_view_csv_annual_district(request):
     objectid = request.GET.get('objectid', None)
@@ -4124,7 +4170,7 @@ def tmin_view_csv_annual_district(request):
     
     
     theme_path = os.path.join(os.path.dirname(__file__), 'static/yml/transparent_theme.yml')
-    print(theme_path)
+    
     theme = Theme(filename=theme_path)
     curdoc().theme=theme
     curdoc().add_root(p)
@@ -4214,25 +4260,26 @@ def tmin_view_csv_annual_district(request):
     df_imd = df_imdaa.rename(columns={objectid: 'observed'})
     df_ssp245 = df_ssp245.rename(columns={objectid: 'ssp245'})
     df_ssp585 = df_ssp585.rename(columns={objectid: 'ssp585'})
-    
-# Merge all DataFrames on their common date-time index
-    df_hist_imd = df_hist.join([df_imd], how='outer')
-    df_ssp245_ssp585 = df_ssp245.join([ df_ssp585], how='outer')
-    # Merge the DataFrames by concatenating them along the rows (time index)
-    merged_df = pd.concat([df_hist_imd, df_ssp245_ssp585])
-    
-    Data=merged_df.to_csv()
-    context_csv = {
-        'Data':Data
-    }
-    request.session['tmin_view_csv_annual_district'] = context_csv
-    # Pass the CSV data along with the script and div to the template
+    request.session.save()
+
+    # Trigger the Celery task to process the time-consuming task
+    session_key =request.session.session_key
+    # Merge and store the result in the session
     context = {
         'script': combined_script,
         'div': combined_div,
-        'key':'tmin_view_csv_annual_district'
+        'key': session_key
     }
-    return render(request,'dashboard.html',context)
+    response = render(request, 'dashboard.html', context)
+
+    
+    df_hist_pickle = dill.dumps(df_hist)
+    df_imd_pickle = dill.dumps(df_imd)
+    merged_ssp245_pickle = dill.dumps(df_ssp245)
+    merged_ssp585_pickle = dill.dumps(df_ssp585)
+    process_csv_task.delay(df_hist_pickle, df_imd_pickle, merged_ssp245_pickle, merged_ssp585_pickle, session_key)
+
+    return response
 #7.
 def tmin_view_csv_daily_state(request):
     objectid = request.GET.get('objectid', None)
@@ -4258,7 +4305,7 @@ def tmin_view_csv_daily_state(request):
     
     
     theme_path = os.path.join(os.path.dirname(__file__), 'static/yml/transparent_theme.yml')
-    print(theme_path)
+    
     theme = Theme(filename=theme_path)
     curdoc().theme=theme
     curdoc().add_root(p)
@@ -4348,25 +4395,26 @@ def tmin_view_csv_daily_state(request):
     df_imd = df_imdaa.rename(columns={objectid: 'observed'})
     df_ssp245 = df_ssp245.rename(columns={objectid: 'ssp245'})
     df_ssp585 = df_ssp585.rename(columns={objectid: 'ssp585'})
-    
-# Merge all DataFrames on their common date-time index
-    df_hist_imd = df_hist.join([df_imd], how='outer')
-    df_ssp245_ssp585 = df_ssp245.join([ df_ssp585], how='outer')
-    # Merge the DataFrames by concatenating them along the rows (time index)
-    merged_df = pd.concat([df_hist_imd, df_ssp245_ssp585])
-    
-    Data=merged_df.to_csv()
-    context_csv = {
-        'Data':Data
-    }
-    request.session['tmin_view_csv_daily_state'] = context_csv
-    # Pass the CSV data along with the script and div to the template
+    request.session.save()
+
+    # Trigger the Celery task to process the time-consuming task
+    session_key =request.session.session_key
+    # Merge and store the result in the session
     context = {
         'script': combined_script,
         'div': combined_div,
-        'key':'tmin_view_csv_daily_state'
+        'key': session_key
     }
-    return render(request,'dashboard.html',context)
+    response = render(request, 'dashboard.html', context)
+
+    
+    df_hist_pickle = dill.dumps(df_hist)
+    df_imd_pickle = dill.dumps(df_imd)
+    merged_ssp245_pickle = dill.dumps(df_ssp245)
+    merged_ssp585_pickle = dill.dumps(df_ssp585)
+    process_csv_task.delay(df_hist_pickle, df_imd_pickle, merged_ssp245_pickle, merged_ssp585_pickle, session_key)
+
+    return response
 #8.
 def tmin_view_csv_monthly_state(request):
     objectid = request.GET.get('objectid', None)
@@ -4392,7 +4440,7 @@ def tmin_view_csv_monthly_state(request):
     
     
     theme_path = os.path.join(os.path.dirname(__file__), 'static/yml/transparent_theme.yml')
-    print(theme_path)
+    
     theme = Theme(filename=theme_path)
     curdoc().theme=theme
     curdoc().add_root(p)
@@ -4481,26 +4529,26 @@ def tmin_view_csv_monthly_state(request):
     df_imd = df_imdaa.rename(columns={objectid: 'observed'})
     df_ssp245 = df_ssp245.rename(columns={objectid: 'ssp245'})
     df_ssp585 = df_ssp585.rename(columns={objectid: 'ssp585'})
-    
-# Merge all DataFrames on their common date-time index
-    df_hist_imd = df_hist.join([df_imd], how='outer')
-    df_ssp245_ssp585 = df_ssp245.join([ df_ssp585], how='outer')
-    # Merge the DataFrames by concatenating them along the rows (time index)
-    merged_df = pd.concat([df_hist_imd, df_ssp245_ssp585])
-    
-    Data=merged_df.to_csv()
-    context_csv = {
-        'Data':Data
-    }
-    request.session['tmin_view_csv_monthly_state'] = context_csv
-    # Pass the CSV data along with the script and div to the template
+    request.session.save()
+
+    # Trigger the Celery task to process the time-consuming task
+    session_key =request.session.session_key
+    # Merge and store the result in the session
     context = {
         'script': combined_script,
         'div': combined_div,
-        'key':'tmin_view_csv_monthly_state'
+        'key': session_key
     }
-    return render(request,'dashboard.html',context)
-#9.
+    response = render(request, 'dashboard.html', context)
+
+    
+    df_hist_pickle = dill.dumps(df_hist)
+    df_imd_pickle = dill.dumps(df_imd)
+    merged_ssp245_pickle = dill.dumps(df_ssp245)
+    merged_ssp585_pickle = dill.dumps(df_ssp585)
+    process_csv_task.delay(df_hist_pickle, df_imd_pickle, merged_ssp245_pickle, merged_ssp585_pickle, session_key)
+
+    return response
 def tmin_view_csv_annual_state(request):
     objectid = request.GET.get('objectid', None)
     
@@ -4525,7 +4573,7 @@ def tmin_view_csv_annual_state(request):
     
     
     theme_path = os.path.join(os.path.dirname(__file__), 'static/yml/transparent_theme.yml')
-    print(theme_path)
+    
     theme = Theme(filename=theme_path)
     curdoc().theme=theme
     curdoc().add_root(p)
@@ -4614,25 +4662,26 @@ def tmin_view_csv_annual_state(request):
     df_imd = df_imdaa.rename(columns={objectid: 'observed'})
     df_ssp245 = df_ssp245.rename(columns={objectid: 'ssp245'})
     df_ssp585 = df_ssp585.rename(columns={objectid: 'ssp585'})
-    
-# Merge all DataFrames on their common date-time index
-    df_hist_imd = df_hist.join([df_imd], how='outer')
-    df_ssp245_ssp585 = df_ssp245.join([ df_ssp585], how='outer')
-    # Merge the DataFrames by concatenating them along the rows (time index)
-    merged_df = pd.concat([df_hist_imd, df_ssp245_ssp585])
-    
-    Data=merged_df.to_csv()
-    context_csv = {
-        'Data':Data
-    }
-    request.session['tmin_view_csv_annual_state'] = context_csv
-    # Pass the CSV data along with the script and div to the template
+    request.session.save()
+
+    # Trigger the Celery task to process the time-consuming task
+    session_key =request.session.session_key
+    # Merge and store the result in the session
     context = {
         'script': combined_script,
         'div': combined_div,
-        'key':'tmin_view_csv_annual_state'
+        'key': session_key
     }
-    return render(request,'dashboard.html',context)
+    response = render(request, 'dashboard.html', context)
+
+    
+    df_hist_pickle = dill.dumps(df_hist)
+    df_imd_pickle = dill.dumps(df_imd)
+    merged_ssp245_pickle = dill.dumps(df_ssp245)
+    merged_ssp585_pickle = dill.dumps(df_ssp585)
+    process_csv_task.delay(df_hist_pickle, df_imd_pickle, merged_ssp245_pickle, merged_ssp585_pickle, session_key)
+
+    return response
 #10.
 def tmin_view_csv_daily_basin(request):
     objectid = request.GET.get('objectid', None)
@@ -4658,7 +4707,7 @@ def tmin_view_csv_daily_basin(request):
     
     
     theme_path = os.path.join(os.path.dirname(__file__), 'static/yml/transparent_theme.yml')
-    print(theme_path)
+    
     theme = Theme(filename=theme_path)
     curdoc().theme=theme
     curdoc().add_root(p)
@@ -4747,25 +4796,26 @@ def tmin_view_csv_daily_basin(request):
     df_imd = df_imdaa.rename(columns={objectid: 'observed'})
     df_ssp245 = df_ssp245.rename(columns={objectid: 'ssp245'})
     df_ssp585 = df_ssp585.rename(columns={objectid: 'ssp585'})
-    
-# Merge all DataFrames on their common date-time index
-    df_hist_imd = df_hist.join([df_imd], how='outer')
-    df_ssp245_ssp585 = df_ssp245.join([ df_ssp585], how='outer')
-    # Merge the DataFrames by concatenating them along the rows (time index)
-    merged_df = pd.concat([df_hist_imd, df_ssp245_ssp585])
-    
-    Data=merged_df.to_csv()
-    context_csv = {
-        'Data':Data
-    }
-    request.session['tmin_view_csv_daily_basin'] = context_csv
-    # Pass the CSV data along with the script and div to the template
+    request.session.save()
+
+    # Trigger the Celery task to process the time-consuming task
+    session_key =request.session.session_key
+    # Merge and store the result in the session
     context = {
         'script': combined_script,
         'div': combined_div,
-        'key':'tmin_view_csv_daily_basin'
+        'key': session_key
     }
-    return render(request,'dashboard.html',context)
+    response = render(request, 'dashboard.html', context)
+
+    
+    df_hist_pickle = dill.dumps(df_hist)
+    df_imd_pickle = dill.dumps(df_imd)
+    merged_ssp245_pickle = dill.dumps(df_ssp245)
+    merged_ssp585_pickle = dill.dumps(df_ssp585)
+    process_csv_task.delay(df_hist_pickle, df_imd_pickle, merged_ssp245_pickle, merged_ssp585_pickle, session_key)
+
+    return response
 #11.
 def tmin_view_csv_monthly_basin(request):
     objectid = request.GET.get('objectid', None)
@@ -4790,7 +4840,7 @@ def tmin_view_csv_monthly_basin(request):
     
     
     theme_path = os.path.join(os.path.dirname(__file__), 'static/yml/transparent_theme.yml')
-    print(theme_path)
+    
     theme = Theme(filename=theme_path)
     curdoc().theme=theme
     curdoc().add_root(p)
@@ -4879,25 +4929,26 @@ def tmin_view_csv_monthly_basin(request):
     df_imd = df_imdaa.rename(columns={objectid: 'observed'})
     df_ssp245 = df_ssp245.rename(columns={objectid: 'ssp245'})
     df_ssp585 = df_ssp585.rename(columns={objectid: 'ssp585'})
-    
-# Merge all DataFrames on their common date-time index
-    df_hist_imd = df_hist.join([df_imd], how='outer')
-    df_ssp245_ssp585 = df_ssp245.join([ df_ssp585], how='outer')
-    # Merge the DataFrames by concatenating them along the rows (time index)
-    merged_df = pd.concat([df_hist_imd, df_ssp245_ssp585])
-    
-    Data=merged_df.to_csv()
-    context_csv = {
-        'Data':Data
-    }
-    request.session['tmin_view_csv_monthly_basin'] = context_csv
-    # Pass the CSV data along with the script and div to the template
+    request.session.save()
+
+    # Trigger the Celery task to process the time-consuming task
+    session_key =request.session.session_key
+    # Merge and store the result in the session
     context = {
         'script': combined_script,
         'div': combined_div,
-        'key':'tmin_view_csv_monthly_basin'
+        'key': session_key
     }
-    return render(request,'dashboard.html',context)
+    response = render(request, 'dashboard.html', context)
+
+    
+    df_hist_pickle = dill.dumps(df_hist)
+    df_imd_pickle = dill.dumps(df_imd)
+    merged_ssp245_pickle = dill.dumps(df_ssp245)
+    merged_ssp585_pickle = dill.dumps(df_ssp585)
+    process_csv_task.delay(df_hist_pickle, df_imd_pickle, merged_ssp245_pickle, merged_ssp585_pickle, session_key)
+
+    return response
 #12.
 def tmin_view_csv_annual_basin(request):
     objectid = request.GET.get('objectid', None)
@@ -4923,7 +4974,7 @@ def tmin_view_csv_annual_basin(request):
     
     
     theme_path = os.path.join(os.path.dirname(__file__), 'static/yml/transparent_theme.yml')
-    print(theme_path)
+    
     theme = Theme(filename=theme_path)
     curdoc().theme=theme
     curdoc().add_root(p)
@@ -5012,25 +5063,26 @@ def tmin_view_csv_annual_basin(request):
     df_imd = df_imdaa.rename(columns={objectid: 'observed'})
     df_ssp245 = df_ssp245.rename(columns={objectid: 'ssp245'})
     df_ssp585 = df_ssp585.rename(columns={objectid: 'ssp585'})
-    
-# Merge all DataFrames on their common date-time index
-    df_hist_imd = df_hist.join([df_imd], how='outer')
-    df_ssp245_ssp585 = df_ssp245.join([ df_ssp585], how='outer')
-    # Merge the DataFrames by concatenating them along the rows (time index)
-    merged_df = pd.concat([df_hist_imd, df_ssp245_ssp585])
-    
-    Data=merged_df.to_csv()
-    context_csv = {
-        'Data':Data
-    }
-    request.session['tmin_view_csv_annual_basin'] = context_csv
-    # Pass the CSV data along with the script and div to the template
+    request.session.save()
+
+    # Trigger the Celery task to process the time-consuming task
+    session_key =request.session.session_key
+    # Merge and store the result in the session
     context = {
         'script': combined_script,
         'div': combined_div,
-        'key':'tmin_view_csv_annual_basin'
+        'key': session_key
     }
-    return render(request,'dashboard.html',context)
+    response = render(request, 'dashboard.html', context)
+
+    
+    df_hist_pickle = dill.dumps(df_hist)
+    df_imd_pickle = dill.dumps(df_imd)
+    merged_ssp245_pickle = dill.dumps(df_ssp245)
+    merged_ssp585_pickle = dill.dumps(df_ssp585)
+    process_csv_task.delay(df_hist_pickle, df_imd_pickle, merged_ssp245_pickle, merged_ssp585_pickle, session_key)
+
+    return response
 
 #..................................................................................................................
 def plotting(request):
