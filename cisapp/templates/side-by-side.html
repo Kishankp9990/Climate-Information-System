@@ -585,6 +585,7 @@
     var osmLayer = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
         attribution: '© OpenStreetMap contributors'
     }).addTo(map);
+    
     marker=L.marker([gLat, gLng]).addTo(map);
     marker.setOpacity(0);
    
@@ -601,8 +602,14 @@ var nexrad = L.tileLayer.wms('http://172.18.16.22:8080/geoserver/cis/wms', {
     });
     sbslayer=L.control.sideBySide(osmLayer, stamenLayer);
     //osm layer->wms layer->osm layer->side-by-side control. this is the order to make it work
-
-
+    var boundary = L.tileLayer.wms('http://172.18.16.22:8080/geoserver/cis/wms', {
+        layers: 'cis:India_Country_Boundary',
+        format: 'image/png',
+        transparent: true,
+        opacity: 0.3,
+        attribution: "india_boundary"
+        });
+    boundary.addTo(map);
 function stylegeojson(geojson){
     const geojsonlayer = L.geoJSON(geojson, {
         style: {
@@ -667,6 +674,7 @@ function showlocation(gLat, gLng, gurl, gtemporal, gregional){
     removeAllLayers();
     map.removeControl(sbslayer);
     osmLayer.addTo(map);
+    boundary.addTo(map);
     if(gpageview==='compare'){
     nexrad.addTo(map);
     stamenLayer.addTo(map);
@@ -751,6 +759,7 @@ function showlatlng(gLat, gLng, gurl, gtemporal, gregional){
     removeAllLayers();
     map.removeControl(sbslayer);
     osmLayer.addTo(map);
+    boundary.addTo(map);
     document.getElementById('latlng-inputs').style.display='block';
 };
 function comparevariable(gcomparemplotType,gcompareview){
@@ -1965,113 +1974,6 @@ preloadPromise = Promise.all([
     console.error('Error loading GeoJSON data:', error);
 });
 }); 
-
-/*document.addEventListener('DOMContentLoaded', () => {
-    // Check if the `caches` API is supported
-    if ('caches' in window) {
-      const cacheVersion = 'v1'; // Define cache version
-      const cacheName = `geojson-cache-${cacheVersion}`; // Append version to cache name
-      const urlsToCache = [
-        '{% static 'geojson/India_State_Boundary_modified.zip' %}',
-        '{% static 'geojson/output_modified.zip' %}',
-        '{% static 'geojson/India_Basin_modified.zip' %}',
-      ];
-  
-      const preloadPromise = caches.open(cacheName).then(cache => {
-        // Check and delete old caches if cache version has changed
-        caches.keys().then(cacheNames => {
-          cacheNames.forEach(name => {
-            if (name.startsWith('geojson-cache-') && name !== cacheName) {
-              caches.delete(name);
-            }
-          });
-        });
-  
-        return cache.keys().then(keys => {
-          const cachedResources = keys.map(key => key.url);
-          const resourcesToFetch = urlsToCache.filter(url => !cachedResources.includes(url));
-  
-          const fetchAndUnzip = (url) => {
-            return fetch(url, { keepalive: true })
-              .then(response => response.blob())
-              .then(blob => {
-                return new Promise((resolve, reject) => {
-                  JSZip.loadAsync(blob)
-                    .then(zip => {
-                      const geojsonFileName = Object.keys(zip.files)[0];
-                      const geojsonFile = zip.file(geojsonFileName);
-                      if (geojsonFile) {
-                        geojsonFile.async('string').then(geojsonString => {
-                          const geojson = JSON.parse(geojsonString);
-                          resolve(geojson);
-                        })
-                        .catch(error => reject(error));
-                      } else {
-                        reject(new Error(`No GeoJSON file found in zip: ${geojsonFileName}`));
-                      }
-                    })
-                    .catch(error => reject(error));
-                });
-              });
-          };
-  
-          const cacheGeojson = (url) => {
-            // Cache the fetched GeoJSON file
-            return cache.add(url).then(() => fetchAndUnzip(url));
-          };
-  
-          const getCachedGeojson = (url) => {
-            // Retrieve the GeoJSON file from cache
-            return cache.match(new Request(url, { keepalive: true }))
-              .then(response => response.blob())
-              .then(blob => {
-                return new Promise((resolve, reject) => {
-                  JSZip.loadAsync(blob)
-                    .then(zip => {
-                      const geojsonFileName = Object.keys(zip.files)[0];
-                      const geojsonFile = zip.file(geojsonFileName);
-                      if (geojsonFile) {
-                        geojsonFile.async('string').then(geojsonString => {
-                          const geojson = JSON.parse(geojsonString);
-                          resolve(geojson);
-                        })
-                        .catch(error => reject(error));
-                      } else {
-                        reject(new Error(`No GeoJSON file found in zip: ${geojsonFileName}`));
-                      }
-                    })
-                    .catch(error => reject(error));
-                });
-              });
-          };
-  
-          // Map each URL to either fetch-and-cache or retrieve-from-cache
-          const promises = urlsToCache.map(url => {
-            if (resourcesToFetch.includes(url)) {
-              return cacheGeojson(url);
-            } else {
-              return getCachedGeojson(url);
-            }
-          });
-  
-          return Promise.all(promises);
-        });
-      })
-      .then(data => {
-        // Assign preloaded data to respective variables
-        gstatepreloading = data[0];
-        gdistrictpreloading = data[1];
-        gbasinpreloading = data[2];
-      })
-      .catch(error => {
-        console.error('Error loading GeoJSON data:', error);
-      });
-  
-      window.preloadPromise = preloadPromise; // Define preloadPromise globally to access it later
-    } else {
-      console.error('Caches API is not supported in this browser.');
-    }
-  });   */
         </script>
         {%endblock%}
         

@@ -197,72 +197,9 @@ def download_csv(request):
     except Session.DoesNotExist:
         return JsonResponse({'error': 'Session does not exist'}, status=400)
 #1.
-def mergeppt(df_hist, df_imd, merged_ssp245,merged_ssp585):
-    # Rename the columns to indicate their source before merging
-    df_hist = df_hist.rename(columns={'pr': 'hist'})
-    df_imd = df_imd.rename(columns={'pr': 'observed'})
-    df_ssp245 = merged_ssp245.rename(columns={'pr': 'ssp245'})
-    df_ssp585 = merged_ssp585.rename(columns={'pr': 'ssp585'})
-
-    # Merge all DataFrames on their common date-time index
-    df_hist_imd = df_hist.join([df_imd], how='outer')
-    df_ssp245_ssp585 = df_ssp245.join([ df_ssp585], how='outer')
-    
-    
-    # Merge the DataFrames by concatenating them along the rows (time index)
-    merged_df = pd.concat([df_hist_imd, df_ssp245_ssp585])
-    
-    Data=merged_df.to_csv()
-    context_csv = {
-        'Data':Data
-    }
-    
-    return context_csv
-def mergetmin(df_hist, df_imdaa,merged_ssp245,merged_ssp585):
-
-    # Rename the columns to indicate their source before merging
-    df_hist = df_hist.rename(columns={'tasmin': 'hist'})
-    df_imdaa = df_imdaa.rename(columns={'tasmin': 'observed'})
-    df_ssp245 = merged_ssp245.rename(columns={'tasmin': 'ssp245'})
-    df_ssp585 = merged_ssp585.rename(columns={'tasmin': 'ssp585'})
-
-    # Merge all DataFrames on their common date-time index
-    df_hist_imdaa = df_hist.join([df_imdaa], how='outer')
-    df_ssp245_ssp585 = df_ssp245.join([ df_ssp585], how='outer')
-    
-    # Merge the DataFrames by concatenating them along the rows (time index)
-    merged_df = pd.concat([df_hist_imdaa, df_ssp245_ssp585])
-    Data=merged_df.to_csv()
-    context_csv = {
-        'Data':Data
-    }
-    
-    return context_csv
-def mergetmax(df_hist, df_imdaa,merged_ssp245,merged_ssp585):
-    # Rename the columns to indicate their source before merging
-    df_hist = df_hist.rename(columns={'tasmax': 'hist'})
-    df_imdaa = df_imdaa.rename(columns={'tasmax': 'observed'})
-    df_ssp245 = merged_ssp245.rename(columns={'tasmax': 'ssp245'})
-    df_ssp585 = merged_ssp585.rename(columns={'tasmax': 'ssp585'})
-
-    # Merge all DataFrames on their common date-time index
-    df_hist_imdaa = df_hist.join([df_imdaa], how='outer')
-    df_ssp245_ssp585 = df_ssp245.join([ df_ssp585], how='outer')
-    
-    # Merge the DataFrames by concatenating them along the rows (time index)
-    merged_df = pd.concat([df_hist_imdaa, df_ssp245_ssp585])
-    Data=merged_df.to_csv()
-    context_csv = {
-        'Data':Data
-    }
-    
-    return context_csv
 def ppt_view_netcdf_annual(request):
     lat = request.GET.get('lat', None)
     lng = request.GET.get('lng', None)
-    
-
-
     netcdf_file_path_hist = '/home/kishan/datahub/climate/GCM_DS/Yearly_mean/hist_pr.nc'
     netcdf_file_path_imd ='/home/kishan/datahub/climate/GCM_DS1/temp/pr_interpolated_125_yearly.nc'
     netcdf_file_path_ssp245_near ='/home/kishan/datahub/climate/GCM_DS/Yearly_mean/ssp245_pr_2015_2040.nc'
@@ -541,11 +478,7 @@ def ppt_view_netcdf_daily(request):
     ds_ssp245 =xr.open_dataset(netcdf_file_path_ssp245).sel(lat=lat, lon=lng, method='nearest').pr.drop_vars(['lat', 'lon'])
     ds_ssp585 =xr.open_dataset(netcdf_file_path_ssp585).sel(lat=lat, lon=lng, method='nearest').pr.drop_vars(['lat', 'lon'])
     
-    # Convert to DataFrames
-    # df_imd = ds_imd.to_dataframe()
-    # df_hist = ds_hist.to_dataframe()
-    # df_ssp245 = ds_ssp245.to_dataframe()
-    # df_ssp585 = ds_ssp585.to_dataframe()
+
 
     # Create a Bokeh figure
     # p = figure(title="Time Series Plot", x_axis_label='Date', y_axis_label='PPT', x_axis_type='datetime', width=700, margin=(0,0, 0, -265))
